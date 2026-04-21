@@ -1,0 +1,384 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Career Thief – HUD Overlay
+   Design : Industriel / Surveillance, palettes sombres + accent orange-rouge
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@400;600;700;900&display=swap');
+
+/* ── Variables ─────────────────────────────────────────────────────────── */
+.ct-root {
+  --ct-accent    : #e8820a;     /* orange crime */
+  --ct-success   : #2dcc6a;     /* vert succès */
+  --ct-danger    : #e82828;     /* rouge police */
+  --ct-warn      : #e8c20a;     /* jaune avertissement */
+  --ct-bg-deep   : rgba(8, 8, 12, 0.82);
+  --ct-bg-mid    : rgba(18, 18, 26, 0.72);
+  --ct-border    : rgba(255, 255, 255, 0.08);
+  --ct-text      : #dde0e8;
+  --ct-mono      : 'Share Tech Mono', monospace;
+  --ct-display   : 'Barlow Condensed', sans-serif;
+}
+
+/* ── Conteneur racine ───────────────────────────────────────────────────── */
+.ct-root {
+  position   : fixed;
+  inset      : 0;
+  pointer-events : none;
+  z-index    : 500;
+  font-family: var(--ct-display);
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PROMPT D'INTERACTION
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.ct-prompt {
+  position   : absolute;
+  bottom     : 22%;
+  left       : 50%;
+  transform  : translateX(-50%);
+  animation  : ct-slideUp 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ct-prompt-inner {
+  display        : flex;
+  align-items    : center;
+  gap            : 14px;
+  padding        : 11px 20px;
+  background     : var(--ct-bg-deep);
+  border         : 1px solid rgba(232, 130, 10, 0.35);
+  border-radius  : 3px;
+  box-shadow     : 0 0 20px rgba(232, 130, 10, 0.12),
+                   inset 0 1px 0 rgba(255,255,255,0.05);
+  backdrop-filter: blur(6px);
+}
+
+.ct-prompt-key {
+  background   : var(--ct-accent);
+  color        : #000;
+  font-family  : var(--ct-mono);
+  font-size    : 15px;
+  font-weight  : 700;
+  width        : 30px;
+  height       : 30px;
+  display      : flex;
+  align-items  : center;
+  justify-content: center;
+  border-radius: 3px;
+  flex-shrink  : 0;
+  box-shadow   : 0 0 12px rgba(232, 130, 10, 0.5),
+                 0 2px 0 rgba(0,0,0,0.5);
+  letter-spacing: 0;
+}
+
+.ct-prompt-info {
+  display       : flex;
+  flex-direction: column;
+  gap           : 1px;
+}
+
+.ct-action-label {
+  font-size    : 10px;
+  font-weight  : 600;
+  letter-spacing: 0.2em;
+  color        : var(--ct-accent);
+  opacity      : 0.8;
+}
+
+.ct-part-name {
+  font-size    : 16px;
+  font-weight  : 700;
+  color        : var(--ct-text);
+  letter-spacing: 0.03em;
+  line-height  : 1;
+}
+
+.ct-part-value {
+  font-family  : var(--ct-mono);
+  font-size    : 12px;
+  color        : rgba(255,255,255,0.45);
+}
+
+/* Barre de cooldown sous le prompt */
+.ct-prompt-bar {
+  height       : 2px;
+  background   : rgba(255,255,255,0.08);
+  border-radius: 0 0 3px 3px;
+  overflow     : hidden;
+}
+.ct-prompt-bar-fill {
+  height       : 100%;
+  background   : var(--ct-accent);
+  transition   : width 0.1s linear;
+  border-radius: 0 0 3px 3px;
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   QTE – BARRE DE TIMING
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.ct-qte-wrap {
+  position      : absolute;
+  top           : 50%;
+  left          : 50%;
+  transform     : translate(-50%, -50%);
+  width         : 460px;
+  display       : flex;
+  flex-direction: column;
+  align-items   : center;
+  gap           : 10px;
+  animation     : ct-qteReveal 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ct-qte-label {
+  font-size    : 11px;
+  font-weight  : 600;
+  letter-spacing: 0.25em;
+  color        : var(--ct-accent);
+  text-transform: uppercase;
+}
+
+.ct-qte-part {
+  font-size    : 20px;
+  font-weight  : 900;
+  letter-spacing: 0.06em;
+  color        : #fff;
+  text-transform: uppercase;
+  text-shadow  : 0 0 20px rgba(232, 130, 10, 0.6);
+  line-height  : 1;
+}
+
+/* Contenant de la barre */
+.ct-qte-bar-outer {
+  position     : relative;
+  width        : 100%;
+  height       : 28px;
+  background   : rgba(0,0,0,0.65);
+  border       : 1px solid var(--ct-border);
+  border-radius: 14px;
+  overflow     : hidden;
+  box-shadow   : 0 2px 16px rgba(0,0,0,0.4),
+                 inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+/* Barre de durée restante (en bas) */
+.ct-qte-time-bar {
+  position     : absolute;
+  bottom       : 0;
+  left         : 0;
+  height       : 3px;
+  background   : linear-gradient(90deg, var(--ct-accent), rgba(232,130,10,0.3));
+  transition   : width 0.08s linear;
+  border-radius: 0 3px 3px 0;
+}
+
+/* Zone de succès (verte, centrée) */
+.ct-qte-zone {
+  position     : absolute;
+  top          : 0;
+  height       : 100%;
+  background   : rgba(45, 204, 106, 0.18);
+  border-left  : 2px solid rgba(45, 204, 106, 0.7);
+  border-right : 2px solid rgba(45, 204, 106, 0.7);
+}
+
+.ct-qte-zone-tick {
+  position     : absolute;
+  top          : 4px;
+  bottom       : 4px;
+  width        : 2px;
+  background   : rgba(45, 204, 106, 0.85);
+  border-radius: 1px;
+}
+.ct-qte-zone-tick.left  { left  : -2px; }
+.ct-qte-zone-tick.right { right : -2px; }
+
+/* Marqueur central */
+.ct-qte-center-mark {
+  position     : absolute;
+  top          : 6px;
+  bottom       : 6px;
+  left         : calc(50% - 1px);
+  width        : 1px;
+  background   : rgba(255,255,255,0.12);
+}
+
+/* Curseur mobile */
+.ct-qte-cursor {
+  position     : absolute;
+  top          : 0;
+  height       : 100%;
+  width        : 5px;
+  transform    : translateX(-50%);
+  display      : flex;
+  flex-direction: column;
+  align-items  : center;
+}
+
+.ct-qte-cursor-tip {
+  width        : 5px;
+  height       : 100%;
+  background   : #fff;
+  border-radius: 3px;
+  box-shadow   : 0 0 10px #fff,
+                 0 0 20px rgba(255, 200, 100, 0.6);
+}
+
+.ct-qte-hint {
+  font-size    : 11px;
+  color        : rgba(255,255,255,0.4);
+  letter-spacing: 0.08em;
+}
+
+.ct-hint-key {
+  color        : var(--ct-accent);
+  font-weight  : 700;
+  font-family  : var(--ct-mono);
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   FEEDBACK (succès / échec / avertissement)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.ct-feedback {
+  position      : absolute;
+  top           : 40%;
+  left          : 50%;
+  transform     : translateX(-50%);
+  display       : flex;
+  align-items   : center;
+  gap           : 14px;
+  padding       : 14px 26px;
+  border-radius : 4px;
+  min-width     : 200px;
+  animation     : ct-popIn 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.ct-success {
+  background : rgba(16, 80, 38, 0.88);
+  border     : 1px solid rgba(45, 204, 106, 0.55);
+  box-shadow : 0 0 24px rgba(45, 204, 106, 0.15);
+}
+.ct-fail {
+  background : rgba(80, 10, 10, 0.88);
+  border     : 1px solid rgba(232, 40, 40, 0.55);
+  box-shadow : 0 0 24px rgba(232, 40, 40, 0.15);
+}
+.ct-warn {
+  background : rgba(60, 42, 0, 0.88);
+  border     : 1px solid rgba(232, 194, 10, 0.4);
+}
+
+.ct-fb-icon {
+  font-size  : 24px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.ct-fb-body {
+  display       : flex;
+  flex-direction: column;
+  gap           : 2px;
+}
+
+.ct-fb-msg {
+  font-size    : 15px;
+  font-weight  : 700;
+  color        : #fff;
+  letter-spacing: 0.04em;
+  white-space  : nowrap;
+}
+
+.ct-fb-value {
+  font-family  : var(--ct-mono);
+  font-size    : 18px;
+  color        : var(--ct-success);
+  font-weight  : 700;
+  letter-spacing: 0.06em;
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   BADGE RECHERCHÉ
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.ct-wanted {
+  position      : absolute;
+  top           : 22px;
+  right         : 22px;
+  display       : flex;
+  flex-direction: column;
+  align-items   : center;
+  gap           : 4px;
+  background    : rgba(100, 5, 5, 0.85);
+  border        : 1px solid rgba(232, 40, 40, 0.5);
+  border-radius : 4px;
+  padding       : 10px 16px;
+  backdrop-filter: blur(6px);
+  box-shadow    : 0 0 24px rgba(232, 40, 40, 0.2);
+  animation     : ct-fadeIn 0.4s ease;
+}
+
+.ct-wanted-stars {
+  display : flex;
+  gap     : 4px;
+}
+
+.ct-star {
+  color      : #ffd700;
+  font-size  : 14px;
+  display    : inline-block;
+}
+.ct-star-1 { animation: ct-starPulse 1.6s 0.0s infinite; }
+.ct-star-2 { animation: ct-starPulse 1.6s 0.5s infinite; }
+.ct-star-3 { animation: ct-starPulse 1.6s 1.0s infinite; }
+
+.ct-wanted-label {
+  font-size    : 10px;
+  font-weight  : 700;
+  letter-spacing: 0.22em;
+  color        : rgba(255, 180, 180, 0.9);
+}
+
+.ct-wanted-timer {
+  font-family  : var(--ct-mono);
+  font-size    : 22px;
+  font-weight  : 700;
+  color        : #fff;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  line-height  : 1;
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ANIMATIONS
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes ct-fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes ct-slideUp {
+  from { opacity: 0; transform: translateX(-50%) translateY(14px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes ct-qteReveal {
+  from { opacity: 0; transform: translate(-50%, -44%); }
+  to   { opacity: 1; transform: translate(-50%, -50%); }
+}
+
+@keyframes ct-popIn {
+  from { opacity: 0; transform: translateX(-50%) scale(0.82); }
+  to   { opacity: 1; transform: translateX(-50%) scale(1); }
+}
+
+@keyframes ct-starPulse {
+  0%, 100% { opacity: 1;    transform: scale(1.0); }
+  50%      { opacity: 0.35; transform: scale(0.85); }
+}

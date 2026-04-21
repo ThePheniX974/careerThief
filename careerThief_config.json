@@ -1,0 +1,67 @@
+{
+  "_comment": "Configuration du mod Career Thief. Modifiez ces valeurs pour équilibrer la difficulté.",
+
+  "targeting": {
+    "maxDistance"     : 9.0,
+    "_maxDistance"    : "Distance maximale (mètres) pour détecter un véhicule cible",
+    "maxAngleDot"     : 0.25,
+    "_maxAngleDot"    : "Cos(angle) min pour le cône frontal. 0.25≈75°, 0.5≈60°, 0.7≈45°. Plus élevé = plus strict"
+  },
+
+  "qte": {
+    "duration"        : 4.0,
+    "_duration"       : "Durée du QTE en secondes avant timeout automatique",
+    "cursorSpeed"     : 0.55,
+    "_cursorSpeed"    : "Oscillations par seconde du curseur. Plus haut = plus difficile. Recommandé : 0.4–1.0",
+    "successZone"     : 0.18,
+    "_successZone"    : "Largeur de la zone de succès (0–1). 0.18 = 18% de la barre. Plus petit = plus dur"
+  },
+
+  "penalties": {
+    "cooldownAfterSteal" : 5.0,
+    "_cooldownAfterSteal": "Cooldown en secondes après un vol réussi",
+    "cooldownAfterFail"  : 3.0,
+    "_cooldownAfterFail" : "Cooldown en secondes après un vol raté",
+    "wantedDuration"     : 120.0,
+    "_wantedDuration"    : "Durée en secondes de l'état 'Recherché'"
+  },
+
+  "economy": {
+    "_note": "Les valeurs des pièces sont définies dans thief.lua (tableau PARTS). Chaque pièce a un 'value' modifiable.",
+    "partValueMultiplier": 1.0,
+    "_partValueMultiplier": "Multiplicateur global sur toutes les valeurs de pièces (ex: 1.5 = +50%)"
+  },
+
+  "debug": {
+    "debugMode": false,
+    "_debugMode": "Active les logs dans la console GE-Lua (F10) pour le débogage"
+  },
+
+  "presets": {
+    "_note": "Profils de difficulté prédéfinis (à appliquer manuellement dans thief.lua)",
+    "facile": {
+      "qteDuration"    : 5.0,
+      "cursorSpeed"    : 0.38,
+      "successZone"    : 0.28,
+      "wantedDuration" : 60.0
+    },
+    "normal": {
+      "qteDuration"    : 4.0,
+      "cursorSpeed"    : 0.55,
+      "successZone"    : 0.18,
+      "wantedDuration" : 120.0
+    },
+    "difficile": {
+      "qteDuration"    : 3.0,
+      "cursorSpeed"    : 0.80,
+      "successZone"    : 0.11,
+      "wantedDuration" : 180.0
+    },
+    "expert": {
+      "qteDuration"    : 2.5,
+      "cursorSpeed"    : 1.10,
+      "successZone"    : 0.07,
+      "wantedDuration" : 240.0
+    }
+  }
+}

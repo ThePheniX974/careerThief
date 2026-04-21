@@ -1,0 +1,12 @@
+{
+  "careerThief_steal": {
+    "title"      : "Career Thief – Voler une pièce",
+    "desc"       : "Tentative de vol d'une pièce sur le véhicule ciblé. Premier appui = lance le QTE. Second appui = arrête le curseur.",
+    "order"      : 501,
+    "cat"        : "gameplay",
+    "actionMap"  : "Normal",
+    "ctx"        : "elua",
+    "onDown"     : "if career_modules_thief then career_modules_thief.onTheftKeyPressed() end",
+    "isBasic"    : true
+  }
+}
