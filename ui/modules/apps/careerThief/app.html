@@ -1,13 +1,19 @@
 <div ng-controller="CareerThiefCtrl" class="ct-root" ng-cloak>
 
-  <!-- ── Prompt d'interaction : véhicule détecté ── -->
+  <!-- ── Réticule central : indique la pièce regardée ── -->
+  <div class="ct-reticle" ng-show="reticleVisible && !qteActive" ng-class="'ct-reticle-' + reticleState">
+    <div class="ct-reticle-ring"></div>
+    <div class="ct-reticle-dot"></div>
+  </div>
+
+  <!-- ── Prompt d'interaction : pièce détectée ── -->
   <div class="ct-prompt" ng-show="showPrompt && !qteActive && !feedbackVisible">
     <div class="ct-prompt-inner">
       <div class="ct-prompt-key">K</div>
       <div class="ct-prompt-info">
         <span class="ct-action-label">VOLER</span>
         <span class="ct-part-name">{{ targetPartName }}</span>
-        <span class="ct-part-value">{{ targetValue | number:0 }} $</span>
+        <span class="ct-part-value">valeur indic. {{ targetValue | number:0 }}</span>
       </div>
     </div>
     <div class="ct-prompt-bar" ng-show="onCooldown">
@@ -21,7 +27,6 @@
     <div class="ct-qte-part">{{ qtePartName }}</div>
 
     <div class="ct-qte-bar-outer">
-      <!-- Zone de succès verte (centrée) -->
       <div class="ct-qte-zone"
            ng-style="{
              left  : ((0.5 - successZone/2) * 100) + '%',
@@ -31,16 +36,13 @@
         <div class="ct-qte-zone-tick right"></div>
       </div>
 
-      <!-- Marqueur central de la zone -->
       <div class="ct-qte-center-mark"></div>
 
-      <!-- Curseur animé par Lua via qteTick -->
       <div class="ct-qte-cursor"
            ng-style="{ left: (qtePos * 100) + '%' }">
         <div class="ct-qte-cursor-tip"></div>
       </div>
 
-      <!-- Barre de durée restante -->
       <div class="ct-qte-time-bar"
            ng-style="{ width: qteTimePct + '%' }"></div>
     </div>
@@ -50,21 +52,21 @@
     </div>
   </div>
 
-  <!-- ── Feedback : résultat du QTE ── -->
+  <!-- ── Feedback : résultat / info ── -->
   <div class="ct-feedback" ng-show="feedbackVisible" ng-class="feedbackClass">
     <div class="ct-fb-icon">{{ feedbackIcon }}</div>
     <div class="ct-fb-body">
       <div class="ct-fb-msg">{{ feedbackMsg }}</div>
-      <div class="ct-fb-value" ng-show="feedbackValue > 0">+{{ feedbackValue }} $</div>
+      <div class="ct-fb-sub" ng-show="feedbackSub">{{ feedbackSub }}</div>
     </div>
   </div>
 
   <!-- ── Badge "RECHERCHÉ" ── -->
   <div class="ct-wanted" ng-show="wanted.active">
     <div class="ct-wanted-stars">
-      <span class="ct-star ct-star-1">★</span>
-      <span class="ct-star ct-star-2">★</span>
-      <span class="ct-star ct-star-3">★</span>
+      <span class="ct-star ct-star-1">*</span>
+      <span class="ct-star ct-star-2">*</span>
+      <span class="ct-star ct-star-3">*</span>
     </div>
     <div class="ct-wanted-label">RECHERCHÉ</div>
     <div class="ct-wanted-timer">{{ wanted.timeStr }}</div>

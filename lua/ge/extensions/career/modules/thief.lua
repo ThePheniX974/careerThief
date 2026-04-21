@@ -3,379 +3,538 @@
 -- Métier de voleur de pièces en mode carrière BeamNG
 --
 -- Gameplay :
---   1. Approchez un véhicule cible (< maxDistance m, dans le cône frontal)
---   2. Appuyez sur K (configurable) → QTE barre de timing démarre
---   3. Appuyez à nouveau sur K pour saisir la barre au bon moment
---   4. Succès → pièce volée + argent crédité
---   5. Succès OU échec → police immédiatement alertée
+--   1. Regardez une pièce sur un véhicule (raycast caméra, cône serré).
+--   2. Appuyez sur K (configurable) → QTE barre de timing démarre sur la pièce visée.
+--   3. Appuyez à nouveau sur K pour saisir la barre au bon moment.
+--   4. Succès → pièce transférée dans "My Parts" (inventaire natif BeamNG).
+--   5. Succès OU échec → police immédiatement alertée.
 
 local M = {}
 
 -- ── Configuration ─────────────────────────────────────────────────────────────
 local cfg = {
-  maxDistance        = 9.0,   -- mètres max pour cibler un véhicule
-  maxAngleDot        = 0.25,  -- cos(angle) minimum (0.25 ≈ 75°, large pour faciliter)
-  qteDuration        = 4.0,   -- secondes disponibles pour le QTE
-  qteCursorSpeed     = 0.55,  -- oscillations par seconde (plus haut = plus difficile)
-  qteSuccessZone     = 0.18,  -- largeur de la zone verte (0-1, 0.18 = 18%)
-  cooldownAfterSteal = 5.0,   -- cooldown en secondes après vol réussi
-  cooldownAfterFail  = 3.0,   -- cooldown en secondes après vol raté
-  wantedDuration     = 120.0, -- secondes de l'état "recherché"
-  targetUpdateHz     = 4,     -- fréquence de mise à jour de la cible (fois/sec)
-  debugMode          = false,
+  maxDistance        = 9.0,    -- portée max du raycast caméra (m)
+  maxCamAngleDeg     = 18.0,   -- demi-angle max entre rayon cam et centre véhicule (° fallback)
+  vehicleHitRadius   = 2.4,    -- rayon englobant approximatif d'une voiture pour tester le rayon
+  qteDuration        = 4.0,
+  qteCursorSpeed     = 0.55,
+  qteSuccessZone     = 0.18,
+  cooldownAfterSteal = 5.0,
+  cooldownAfterFail  = 3.0,
+  wantedDuration     = 120.0,
+  targetUpdateHz     = 6,
+  debugMode          = false, -- N'affecte QUE le niveau INFO. WARN/ERROR restent toujours visibles.
 }
 
+-- ── Logger explicite ──────────────────────────────────────────────────────────
+-- Tous les messages commencent par [CareerThief] pour filtrage facile dans F10.
+local function logInfo(msg)
+  if cfg.debugMode then
+    print("[CareerThief][INFO]  " .. tostring(msg))
+  end
+end
+local function logWarn(msg)
+  print("[CareerThief][WARN]  " .. tostring(msg))
+end
+local function logError(msg)
+  print("[CareerThief][ERROR] " .. tostring(msg))
+end
+
 -- ── Catalogue des pièces volables ─────────────────────────────────────────────
--- w = poids pour la sélection aléatoire (plus haut = plus fréquent)
+-- zone = { lon=F|M|R, side=L|C|R, vert=H|M|L } projection normalisée dans la demi-bbox du véhicule.
+-- slot  = nom de slot Jbeam standard BeamNG (pour détacher via partmgmt / partInventory).
 local PARTS = {
-  { id = "wheel_fl",   name = "Roue avant gauche",       value = 185, w = 10 },
-  { id = "wheel_fr",   name = "Roue avant droite",       value = 185, w = 10 },
-  { id = "wheel_rl",   name = "Roue arrière gauche",     value = 165, w = 10 },
-  { id = "wheel_rr",   name = "Roue arrière droite",     value = 165, w = 10 },
-  { id = "catalytic",  name = "Pot catalytique",         value = 380, w = 4  },
-  { id = "headlightL", name = "Phare gauche",            value = 95,  w = 8  },
-  { id = "headlightR", name = "Phare droit",             value = 95,  w = 8  },
-  { id = "bumperF",    name = "Pare-chocs avant",        value = 145, w = 7  },
-  { id = "bumperR",    name = "Pare-chocs arrière",      value = 115, w = 7  },
-  { id = "mirrorL",    name = "Rétroviseur gauche",      value = 50,  w = 6  },
-  { id = "mirrorR",    name = "Rétroviseur droit",       value = 50,  w = 6  },
-  { id = "hood",       name = "Capot moteur",            value = 230, w = 5  },
-  { id = "trunk",      name = "Coffre / Hayon",          value = 200, w = 5  },
-  { id = "battery",    name = "Batterie",                value = 130, w = 6  },
-  { id = "exhaust",    name = "Silencieux",              value = 90,  w = 5  },
-  { id = "fenderFL",   name = "Aile avant gauche",       value = 100, w = 6  },
-  { id = "fenderFR",   name = "Aile avant droite",       value = 100, w = 6  },
-  { id = "sideL",      name = "Bas de caisse gauche",    value = 75,  w = 4  },
-  { id = "sideR",      name = "Bas de caisse droit",     value = 75,  w = 4  },
-  { id = "antenna",    name = "Antenne",                 value = 35,  w = 3  },
+  -- AVANT (lon=F)
+  { id="hood",       name="Capot moteur",       value=230, slot="hood",        zone={lon="F", side="C", vert="H"} },
+  { id="bumperF",    name="Pare-chocs avant",   value=145, slot="bumper_F",    zone={lon="F", side="C", vert="L"} },
+  { id="headlightL", name="Phare gauche",       value=95,  slot="headlight_L", zone={lon="F", side="L", vert="M"} },
+  { id="headlightR", name="Phare droit",        value=95,  slot="headlight_R", zone={lon="F", side="R", vert="M"} },
+  { id="fenderFL",   name="Aile avant gauche",  value=100, slot="fender_L",    zone={lon="F", side="L", vert="H"} },
+  { id="fenderFR",   name="Aile avant droite",  value=100, slot="fender_R",    zone={lon="F", side="R", vert="H"} },
+  { id="wheel_fl",   name="Roue avant gauche",  value=185, slot="wheel_FL",    zone={lon="F", side="L", vert="L"} },
+  { id="wheel_fr",   name="Roue avant droite",  value=185, slot="wheel_FR",    zone={lon="F", side="R", vert="L"} },
+
+  -- MILIEU (lon=M)
+  { id="mirrorL",    name="Rétroviseur gauche", value=50,  slot="mirror_L",    zone={lon="M", side="L", vert="H"} },
+  { id="mirrorR",    name="Rétroviseur droit",  value=50,  slot="mirror_R",    zone={lon="M", side="R", vert="H"} },
+  { id="sideL",      name="Bas de caisse gauche", value=75,slot="skirt_L",     zone={lon="M", side="L", vert="L"} },
+  { id="sideR",      name="Bas de caisse droit",  value=75,slot="skirt_R",     zone={lon="M", side="R", vert="L"} },
+  { id="doorL",      name="Portière gauche",    value=140, slot="door_L",      zone={lon="M", side="L", vert="M"} },
+  { id="doorR",      name="Portière droite",    value=140, slot="door_R",      zone={lon="M", side="R", vert="M"} },
+  { id="antenna",    name="Antenne",            value=35,  slot="antenna",     zone={lon="M", side="C", vert="H"} },
+
+  -- ARRIÈRE (lon=R)
+  { id="trunk",      name="Coffre / Hayon",     value=200, slot="tailgate",    zone={lon="R", side="C", vert="H"} },
+  { id="bumperR",    name="Pare-chocs arrière", value=115, slot="bumper_R",    zone={lon="R", side="C", vert="L"} },
+  { id="exhaust",    name="Silencieux",         value=90,  slot="exhaust",     zone={lon="R", side="C", vert="M"} },
+  { id="wheel_rl",   name="Roue arrière gauche",value=165, slot="wheel_RL",    zone={lon="R", side="L", vert="L"} },
+  { id="wheel_rr",   name="Roue arrière droite",value=165, slot="wheel_RR",    zone={lon="R", side="R", vert="L"} },
 }
 
 -- ── État interne ──────────────────────────────────────────────────────────────
 local state = {
-  active          = false,   -- module actif (career mode en cours)
-  targetVehId     = nil,     -- ID du véhicule ciblé
-  targetPart      = nil,     -- pièce sélectionnée pour le prochain vol
-  qteRunning      = false,   -- QTE en cours ?
-  qteElapsed      = 0.0,     -- temps écoulé depuis le début du QTE
-  qteCursorPos    = 0.0,     -- position actuelle du curseur (0-1)
-  cooldown        = 0.0,     -- cooldown restant (secondes)
-  wanted          = false,   -- joueur recherché ?
-  wantedTimer     = 0.0,     -- temps restant dans l'état recherché
-  targetTimer     = 0.0,     -- timer pour la mise à jour de la cible
-  stolenParts     = {},      -- [vehicleId] = {partId = true, ...}
+  active          = false,
+  targetVehId     = nil,
+  targetHitPos    = nil,
+  targetPart      = nil,
+  qteRunning      = false,
+  qteElapsed      = 0.0,
+  qteCursorPos    = 0.0,
+  cooldown        = 0.0,
+  wanted          = false,
+  wantedTimer     = 0.0,
+  targetTimer     = 0.0,
+  stolenParts     = {},  -- [vehicleId] = { [partId]=true }
+  apiHealthy      = false, -- career_modules_partInventory détectée ?
+  apiFunctions    = {},    -- liste des fonctions exposées (pour diagnostic)
 }
 
--- ── Utilitaires ───────────────────────────────────────────────────────────────
-local function dbg(msg)
-  if cfg.debugMode then
-    print("[CareerThief] " .. tostring(msg))
-  end
-end
-
+-- ── Utilitaires mathématiques ─────────────────────────────────────────────────
 local function sendUI(data)
   guihooks.trigger("careerThief_update", data)
 end
 
--- Distance euclidienne entre deux Point3F
-local function vecDist(a, b)
-  local dx = a.x - b.x
-  local dy = a.y - b.y
-  local dz = a.z - b.z
-  return math.sqrt(dx*dx + dy*dy + dz*dz)
-end
-
--- Produit scalaire entre deux vecteurs (normalisés ou non)
 local function vecDot(a, b)
   return a.x*b.x + a.y*b.y + a.z*b.z
 end
 
--- Normalise un Point3F, retourne un table {x,y,z}
-local function vecNorm(v, len)
-  len = len or math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z)
-  if len < 0.0001 then return {x=1, y=0, z=0} end
-  return {x = v.x/len, y = v.y/len, z = v.z/len}
+local function vecLen(v)
+  return math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z)
 end
 
--- ── Sélection aléatoire pondérée d'une pièce ──────────────────────────────────
-local function pickRandomPart(vehId)
-  local stolen = state.stolenParts[vehId] or {}
-  local pool, totalW = {}, 0
-  for _, p in ipairs(PARTS) do
-    if not stolen[p.id] then
-      table.insert(pool, p)
-      totalW = totalW + p.w
+local function vecSub(a, b)
+  return { x=a.x-b.x, y=a.y-b.y, z=a.z-b.z }
+end
+
+-- Produit vectoriel (retourne un table {x,y,z})
+local function vecCross(a, b)
+  return {
+    x = a.y*b.z - a.z*b.y,
+    y = a.z*b.x - a.x*b.z,
+    z = a.x*b.y - a.y*b.x,
+  }
+end
+
+-- ── Découverte de l'API native career_modules_partInventory ──────────────────
+local function discoverPartInventoryAPI()
+  state.apiHealthy   = false
+  state.apiFunctions = {}
+
+  if not career_modules_partInventory then
+    logError("career_modules_partInventory introuvable. Cette API n'existe que si un mode carrière BeamNG 0.32+ est actif.")
+    logError("Vérifie que tu es bien dans une partie CARRIÈRE et non en mode libre/scenario.")
+    return false
+  end
+
+  for k, v in pairs(career_modules_partInventory) do
+    if type(v) == "function" then
+      table.insert(state.apiFunctions, k)
     end
   end
-  if #pool == 0 then return nil end
+  table.sort(state.apiFunctions)
 
-  local r = math.random() * totalW
-  local cum = 0
-  for _, p in ipairs(pool) do
-    cum = cum + p.w
-    if r <= cum then return p end
-  end
-  return pool[#pool]
+  state.apiHealthy = true
+  logInfo("API career_modules_partInventory détectée - fonctions exposées :")
+  logInfo("  " .. table.concat(state.apiFunctions, ", "))
+  return true
 end
 
--- ── Argent joueur ─────────────────────────────────────────────────────────────
-local function addMoney(amount)
-  -- API carrière standard (BeamNG 0.32+)
-  if career_modules_playerAttributes and career_modules_playerAttributes.addAttribute then
-    career_modules_playerAttributes.addAttribute("money", amount)
-    dbg("Argent ajouté via playerAttributes : " .. amount)
-    return true
-  end
-  -- Fallback : tentative via career_career
-  if career_career and career_career.addMoney then
-    career_career.addMoney(amount)
-    dbg("Argent ajouté via career_career : " .. amount)
-    return true
-  end
-  dbg("WARN: wallet API introuvable – argent non crédité")
-  return false
-end
-
--- ── Alerte police ─────────────────────────────────────────────────────────────
-local function alertPolice()
-  state.wanted    = true
-  state.wantedTimer = cfg.wantedDuration
-
-  -- Tentative via le module law enforcement
-  if career_modules_lawEnforcement then
-    if career_modules_lawEnforcement.setWantedLevel then
-      career_modules_lawEnforcement.setWantedLevel(3)
-    elseif career_modules_lawEnforcement.onCrime then
-      career_modules_lawEnforcement.onCrime({ type = "vehicleTheft", severity = 3 })
-    end
-    dbg("Police alertée via lawEnforcement")
-  else
-    dbg("WARN: career_modules_lawEnforcement introuvable – état wanted UI seulement")
+-- ── Raycast depuis la caméra du jeu ──────────────────────────────────────────
+-- Retourne { vehId, hitPos, dist } ou nil si rien de valable n'est touché.
+local function raycastCamera()
+  if not core_camera then
+    logWarn("core_camera introuvable - raycast impossible.")
+    return nil
   end
 
-  sendUI({ type = "wantedStart", duration = cfg.wantedDuration })
-end
+  local camPos = core_camera.getPosition()
+  local camFwd = core_camera.getForward()
+  if not camPos or not camFwd then
+    logWarn("core_camera.getPosition()/getForward() a retourné nil - raycast annulé.")
+    return nil
+  end
 
--- ── Appliquer dégâts visuels sur le véhicule volé ────────────────────────────
-local function damageTargetVehicle(vehId)
-  local veh = be:getObjectByID(vehId)
-  if not veh then return end
-  -- Commande VLUA : applique des dégâts légers pour simuler le démontage
-  veh:queueLuaCommand([[
-    if beamstate and beamstate.applyDamage then
-      beamstate.applyDamage(35, 0, 0.2, 0)
-    end
-  ]])
-end
+  -- Normaliser la direction (safety)
+  local fLen = vecLen(camFwd)
+  if fLen < 0.0001 then
+    logWarn("Direction caméra dégénérée (longueur nulle).")
+    return nil
+  end
+  camFwd = { x=camFwd.x/fLen, y=camFwd.y/fLen, z=camFwd.z/fLen }
 
--- ── Recherche du véhicule cible ───────────────────────────────────────────────
-local function findTargetVehicle()
   local playerVeh = be:getPlayerVehicle(0)
-  if not playerVeh then return nil end
+  local playerId  = playerVeh and playerVeh:getID() or -1
 
-  local playerPos = playerVeh:getPosition()
-  local playerFwd = playerVeh:getDirectionVector()
-
-  local bestId, bestScore = nil, -1
-
-  -- Itère sur tous les objets BeamNGVehicle dans la scène
+  local bestId, bestT, bestVc = nil, cfg.maxDistance, nil
   local vehNames = scenetree.findClassObjects("BeamNGVehicle") or {}
-  for _, vehName in ipairs(vehNames) do
-    local obj = scenetree.findObject(vehName)
-    if obj then
-      local oid = obj:getID()
-      if oid ~= playerVeh:getID() then
-        local ok, opos = pcall(function() return obj:getPosition() end)
-        if ok and opos then
-          -- Calcul distance
-          local dist = vecDist(playerPos, opos)
 
-          if dist >= 0.8 and dist <= cfg.maxDistance then
-            -- Direction vers la cible
-            local dx = opos.x - playerPos.x
-            local dy = opos.y - playerPos.y
-            local dz = opos.z - playerPos.z
-            local dirToObj = vecNorm({x=dx,y=dy,z=dz}, dist)
+  if #vehNames == 0 then
+    -- Pas de warn : scène sans véhicules, c'est normal au spawn
+    return nil
+  end
 
-            -- Produit scalaire avec la direction avant du joueur
-            local dot = vecDot(playerFwd, dirToObj)
-
-            if dot >= cfg.maxAngleDot then
-              -- Score : distance faible + angle faible = meilleur
-              local distScore  = 1.0 - (dist / cfg.maxDistance)
-              local angleScore = (dot - cfg.maxAngleDot) / (1.0 - cfg.maxAngleDot)
-              local score = distScore * 0.45 + angleScore * 0.55
-              if score > bestScore then
-                bestScore = score
-                bestId    = oid
-              end
-            end
+  for _, name in ipairs(vehNames) do
+    local obj = scenetree.findObject(name)
+    if obj and obj:getID() ~= playerId then
+      local ok, vc = pcall(function() return obj:getPosition() end)
+      if ok and vc then
+        local d = vecSub(vc, camPos)
+        local tProj = vecDot(d, camFwd)
+        if tProj > 0.5 and tProj < cfg.maxDistance then
+          local rayPt = { x=camPos.x+tProj*camFwd.x, y=camPos.y+tProj*camFwd.y, z=camPos.z+tProj*camFwd.z }
+          local perp  = vecLen(vecSub(vc, rayPt))
+          if perp < cfg.vehicleHitRadius and tProj < bestT then
+            bestT  = tProj
+            bestId = obj:getID()
+            bestVc = vc
           end
         end
       end
     end
   end
 
-  return bestId
+  if not bestId then return nil end
+
+  local hitPos = { x=camPos.x+bestT*camFwd.x, y=camPos.y+bestT*camFwd.y, z=camPos.z+bestT*camFwd.z }
+  return { vehId=bestId, hitPos=hitPos, dist=bestT }
+end
+
+-- ── Conversion d'un hit world → zone locale du véhicule → pièce catalogue ───
+local function pickPartFromHit(vehId, hitPos)
+  local veh = be:getObjectByID(vehId)
+  if not veh then
+    logWarn("pickPartFromHit: véhicule id=" .. tostring(vehId) .. " introuvable.")
+    return nil
+  end
+
+  local okPos, vPos = pcall(function() return veh:getPosition() end)
+  local okFwd, vFwd = pcall(function() return veh:getDirectionVector() end)
+  local okUp,  vUp  = pcall(function() return veh:getDirectionVectorUp() end)
+  if not (okPos and vPos and okFwd and vFwd and okUp and vUp) then
+    logWarn("pickPartFromHit: impossible de récupérer pos/orientation du véhicule " .. tostring(vehId))
+    return nil
+  end
+
+  -- Axes locaux : fwd = +X local, up = +Z local, right = fwd × up
+  local vRight = vecCross(vFwd, vUp)
+
+  -- Dimensions approximatives (demi-extents) — BeamNG expose plusieurs méthodes :
+  local halfLen, halfWid, halfHgt = 2.3, 1.0, 0.8 -- defaults raisonnables pour une berline
+  local okBB, bb = pcall(function() return veh:getSpawnWorldOOBB() end)
+  if okBB and bb then
+    local okHe, he = pcall(function() return bb:getHalfExtents() end)
+    if okHe and he then
+      halfLen = math.max(he.x, 0.5)
+      halfWid = math.max(he.y, 0.5)
+      halfHgt = math.max(he.z, 0.3)
+    end
+  else
+    logInfo("OOBB indisponible pour le véhicule " .. tostring(vehId) .. ", utilisation de dimensions par défaut.")
+  end
+
+  -- Vecteur hit - centre véhicule, projeté sur les axes locaux
+  local rel  = vecSub(hitPos, vPos)
+  local xLoc = vecDot(rel, vFwd)   / halfLen  -- avant/arrière
+  local yLoc = vecDot(rel, vRight) / halfWid  -- gauche/droite
+  local zLoc = vecDot(rel, vUp)    / halfHgt  -- bas/haut
+
+  local lon  = (xLoc >  0.33) and "F" or ((xLoc < -0.33) and "R" or "M")
+  local side = (yLoc >  0.33) and "R" or ((yLoc < -0.33) and "L" or "C")
+  local vert = (zLoc >  0.33) and "H" or ((zLoc < -0.33) and "L" or "M")
+
+  logInfo(string.format("Hit projeté : lon=%s side=%s vert=%s (xLoc=%.2f yLoc=%.2f zLoc=%.2f)",
+    lon, side, vert, xLoc, yLoc, zLoc))
+
+  -- Recherche d'une pièce catalogue correspondant à cette zone
+  local stolen = state.stolenParts[vehId] or {}
+  for _, p in ipairs(PARTS) do
+    if p.zone.lon == lon and p.zone.side == side and p.zone.vert == vert then
+      if stolen[p.id] then
+        return { part=p, alreadyStolen=true }
+      end
+      return { part=p, alreadyStolen=false }
+    end
+  end
+
+  logInfo(string.format("Aucune pièce du catalogue ne correspond à la zone (lon=%s side=%s vert=%s). Visez une autre partie.",
+    lon, side, vert))
+  return nil
+end
+
+-- ── Alerte police ─────────────────────────────────────────────────────────────
+local function alertPolice()
+  state.wanted      = true
+  state.wantedTimer = cfg.wantedDuration
+
+  if career_modules_lawEnforcement then
+    if career_modules_lawEnforcement.setWantedLevel then
+      pcall(career_modules_lawEnforcement.setWantedLevel, 3)
+      logInfo("Police alertée via setWantedLevel(3).")
+    elseif career_modules_lawEnforcement.onCrime then
+      pcall(career_modules_lawEnforcement.onCrime, { type="vehicleTheft", severity=3 })
+      logInfo("Police alertée via onCrime(vehicleTheft).")
+    else
+      logWarn("career_modules_lawEnforcement présent mais aucune fonction compatible (setWantedLevel / onCrime). État wanted UI uniquement.")
+    end
+  else
+    logWarn("career_modules_lawEnforcement introuvable - police simulée uniquement dans le HUD.")
+  end
+
+  sendUI({ type="wantedStart", duration=cfg.wantedDuration })
+end
+
+-- ── Détachement visuel sur le véhicule cible via partmgmt VLUA ───────────────
+local function detachPartVisually(vehId, slot)
+  if not vehId or not slot then return false end
+  local veh = be:getObjectByID(vehId)
+  if not veh then
+    logWarn("detachPartVisually: véhicule " .. tostring(vehId) .. " introuvable.")
+    return false
+  end
+
+  local cmd = string.format([[
+    local ok, err = pcall(function()
+      if partmgmt and partmgmt.getConfig then
+        local cfg = partmgmt.getConfig()
+        if cfg and cfg.parts and cfg.parts[%q] then
+          cfg.parts[%q] = ""
+          if partmgmt.setPartsConfig then
+            partmgmt.setPartsConfig(cfg)
+          end
+        end
+      end
+      if beamstate and beamstate.breakAllBreakGroups_withoutExtraSounds then
+        beamstate.breakAllBreakGroups_withoutExtraSounds()
+      end
+    end)
+    if not ok then obj:queueGameEngineLua("print('[CareerThief][WARN]  VLUA detach echoue: '..tostring(%q))") end
+  ]], slot, slot, "err")
+  veh:queueLuaCommand(cmd)
+  logInfo("Commande de détachement VLUA envoyée pour slot=" .. slot .. " sur véhicule " .. tostring(vehId))
+  return true
+end
+
+-- ── Ajout à l'inventaire natif My Parts via cascade pcall ───────────────────
+-- Essaie plusieurs signatures connues/probables. Loggue ce qui marche.
+-- Retourne true si une signature a réussi, false sinon.
+local function addToMyParts(part, sourceVehId)
+  local api = career_modules_partInventory
+  if not api then
+    logError("career_modules_partInventory indisponible au moment du vol. Impossible d'ajouter la pièce à My Parts.")
+    sendUI({ type="inventoryUnavailable", reason="no_api" })
+    return false
+  end
+
+  local tried = {}
+  local function tryFn(fnName, ...)
+    table.insert(tried, fnName)
+    if type(api[fnName]) ~= "function" then return false end
+    local ok, err = pcall(api[fnName], ...)
+    if ok then
+      logInfo("Pièce ajoutée à My Parts via " .. fnName .. "()")
+      return true
+    end
+    logWarn("Appel " .. fnName .. "() a levé une erreur : " .. tostring(err))
+    return false
+  end
+
+  -- Ordre du plus idéal (déplacement atomique) au plus basique.
+  if tryFn("movePartFromVehicleToInventory", sourceVehId, part.slot) then return true end
+  if tryFn("movePartToInventory",            sourceVehId, part.slot) then return true end
+  if tryFn("addPartFromVehicle",             sourceVehId, part.slot) then return true end
+  if tryFn("addPart", part.slot, { name=part.name, value=part.value, condition=1.0 }) then return true end
+  if tryFn("addPart", { slot=part.slot, name=part.name, value=part.value }) then return true end
+  if tryFn("addInventoryPart", { slot=part.slot, name=part.name, value=part.value }) then return true end
+  if tryFn("addItemToInventory", { slot=part.slot, name=part.name, value=part.value }) then return true end
+
+  logError("Aucune signature d'ajout connue n'a réussi.")
+  logError("  Signatures tentées : " .. table.concat(tried, ", "))
+  logError("  Fonctions réellement exposées par l'API : " .. table.concat(state.apiFunctions, ", "))
+  logError("  → Ajoute manuellement la fonction gagnante dans addToMyParts() (thief.lua).")
+  sendUI({ type="inventoryUnavailable", reason="no_signature" })
+  return false
 end
 
 -- ── Calcul de la position du curseur QTE (onde triangulaire) ─────────────────
--- Retourne une valeur entre 0 et 1 oscillant de gauche à droite
 local function computeCursorPos(elapsed)
-  local period = 1.0 / cfg.qteCursorSpeed  -- secondes par cycle complet
-  local t = (elapsed % period) / period    -- 0..1 dans le cycle
+  local period = 1.0 / cfg.qteCursorSpeed
+  local t = (elapsed % period) / period
   if t < 0.5 then
-    return t * 2.0           -- 0 → 1  (va à droite)
+    return t * 2.0
   else
-    return (1.0 - t) * 2.0  -- 1 → 0  (revient à gauche)
+    return (1.0 - t) * 2.0
   end
 end
 
--- ── Logique principale : touche de vol appuyée ───────────────────────────────
-function M.onTheftKeyPressed()
-  if not state.active then return end
+-- ── Recherche de la cible (vehicule + pièce vue) ─────────────────────────────
+local function findTargetAndPart()
+  local hit = raycastCamera()
+  if not hit then return nil end
 
-  -- ── Cas 1 : QTE en cours → évaluer le résultat ───────────────────────────
+  local res = pickPartFromHit(hit.vehId, hit.hitPos)
+  if not res then return nil end
+
+  return {
+    vehId         = hit.vehId,
+    hitPos        = hit.hitPos,
+    part          = res.part,
+    alreadyStolen = res.alreadyStolen,
+  }
+end
+
+-- ── Logique principale : touche de vol ───────────────────────────────────────
+function M.onTheftKeyPressed()
+  if not state.active then
+    logWarn("Touche pressée mais module inactif (hors mode carrière).")
+    return
+  end
+
+  -- Cas 1 : QTE en cours → évaluer
   if state.qteRunning then
     local pos     = state.qteCursorPos
     local half    = cfg.qteSuccessZone / 2.0
     local success = (pos >= 0.5 - half) and (pos <= 0.5 + half)
 
     state.qteRunning = false
-
-    -- Police toujours alertée (succès ET échec)
     alertPolice()
 
     if success and state.targetVehId and state.targetPart then
-      -- Marquer la pièce comme volée sur ce véhicule
-      if not state.stolenParts[state.targetVehId] then
-        state.stolenParts[state.targetVehId] = {}
+      local vehId = state.targetVehId
+      local part  = state.targetPart
+
+      -- Transférer dans My Parts (inventaire natif)
+      local added = addToMyParts(part, vehId)
+
+      if added then
+        -- Marquer la pièce comme volée sur ce véhicule (évite le re-vol)
+        state.stolenParts[vehId] = state.stolenParts[vehId] or {}
+        state.stolenParts[vehId][part.id] = true
+
+        -- Détachement visuel (best-effort, indépendant de l'inventaire)
+        detachPartVisually(vehId, part.slot)
+
+        state.cooldown = cfg.cooldownAfterSteal
+        sendUI({ type="qteSuccess", partName=part.name, value=part.value, cursorPos=pos })
+        logInfo(string.format("SUCCÈS - %s ajoutée à My Parts (valeur indicative %d, curseur=%.2f)", part.name, part.value, pos))
+      else
+        -- API down : on compte comme un échec, police déjà alertée
+        state.cooldown = cfg.cooldownAfterFail
+        sendUI({ type="qteFail", cursorPos=pos, reason="inventory_failed" })
+        logWarn("QTE réussi mais l'ajout à My Parts a échoué → vol annulé (police quand même alertée).")
       end
-      state.stolenParts[state.targetVehId][state.targetPart.id] = true
-
-      addMoney(state.targetPart.value)
-      damageTargetVehicle(state.targetVehId)
-
-      state.cooldown = cfg.cooldownAfterSteal
-
-      sendUI({
-        type     = "qteSuccess",
-        partName = state.targetPart.name,
-        value    = state.targetPart.value,
-        cursorPos = pos,
-      })
-      dbg(string.format("SUCCÈS – %s (+%d$) curseur=%.2f", state.targetPart.name, state.targetPart.value, pos))
     else
       state.cooldown = cfg.cooldownAfterFail
-      sendUI({
-        type      = "qteFail",
-        cursorPos = pos,
-      })
-      dbg(string.format("ÉCHEC – curseur=%.2f zone=[%.2f-%.2f]", pos, 0.5-half, 0.5+half))
+      sendUI({ type="qteFail", cursorPos=pos })
+      logWarn(string.format("QTE ÉCHEC - curseur=%.3f hors zone [%.3f..%.3f]. Police alertée.",
+        pos, 0.5-half, 0.5+half))
     end
 
     state.targetPart = nil
     return
   end
 
-  -- ── Cas 2 : Cooldown actif ────────────────────────────────────────────────
+  -- Cas 2 : cooldown actif
   if state.cooldown > 0 then
-    sendUI({ type = "onCooldown", remaining = state.cooldown })
+    sendUI({ type="onCooldown", remaining=state.cooldown })
+    logInfo(string.format("Cooldown actif : %.1fs restantes.", state.cooldown))
     return
   end
 
-  -- ── Cas 3 : Pas de cible ──────────────────────────────────────────────────
-  local vehId = findTargetVehicle()
-  if not vehId then
-    sendUI({ type = "noTarget" })
+  -- Cas 3 : acquisition cible via raycast caméra
+  local tgt = findTargetAndPart()
+  if not tgt then
+    sendUI({ type="noTarget" })
+    logInfo("Aucune pièce volable visée. Raycast sans résultat exploitable.")
     return
   end
 
-  local part = pickRandomPart(vehId)
-  if not part then
-    sendUI({ type = "noPartsLeft" })
+  if tgt.alreadyStolen then
+    sendUI({ type="alreadyStolen", partName=tgt.part.name })
+    logInfo(string.format("Pièce %s déjà volée sur ce véhicule.", tgt.part.name))
     return
   end
 
-  -- ── Cas 4 : Lancement du QTE ─────────────────────────────────────────────
-  state.targetVehId  = vehId
-  state.targetPart   = part
+  -- Cas 4 : vérifier que l'inventaire natif est dispo avant de lancer le QTE
+  if not state.apiHealthy then
+    -- Re-tentative de découverte (mode carrière peut-être chargé tardivement)
+    discoverPartInventoryAPI()
+  end
+  if not career_modules_partInventory then
+    sendUI({ type="inventoryUnavailable", reason="no_api" })
+    logError("Impossible de démarrer le QTE : career_modules_partInventory toujours absent.")
+    return
+  end
+
+  -- Cas 5 : démarrage du QTE
+  state.targetVehId  = tgt.vehId
+  state.targetHitPos = tgt.hitPos
+  state.targetPart   = tgt.part
   state.qteRunning   = true
   state.qteElapsed   = 0.0
   state.qteCursorPos = 0.0
 
   sendUI({
     type        = "qteStart",
-    partName    = part.name,
-    value       = part.value,
+    partName    = tgt.part.name,
+    value       = tgt.part.value,
     duration    = cfg.qteDuration,
     successZone = cfg.qteSuccessZone,
   })
-  dbg(string.format("QTE démarré – veh=%s pièce=%s", tostring(vehId), part.name))
+  logInfo(string.format("QTE démarré - veh=%s, pièce=%s, slot=%s, durée=%.1fs, zone=%.2f",
+    tostring(tgt.vehId), tgt.part.name, tgt.part.slot, cfg.qteDuration, cfg.qteSuccessZone))
 end
 
 -- ── Boucle principale ─────────────────────────────────────────────────────────
 function M.onUpdate(dtReal, dtSim, dtRaw)
   if not state.active then return end
 
-  -- Décompte des timers
+  -- Timers
   if state.cooldown > 0 then
     state.cooldown = math.max(0.0, state.cooldown - dtReal)
   end
-
   if state.wantedTimer > 0 then
     state.wantedTimer = math.max(0.0, state.wantedTimer - dtReal)
     if state.wantedTimer <= 0.0 then
       state.wanted = false
-      sendUI({ type = "wantedEnd" })
-      dbg("Fin de l'état recherché")
+      sendUI({ type="wantedEnd" })
+      logInfo("Fin de l'état recherché.")
     end
   end
 
-  -- ── QTE en cours : mise à jour curseur + timeout ──────────────────────────
+  -- QTE en cours : mise à jour curseur + timeout
   if state.qteRunning then
     state.qteElapsed   = state.qteElapsed + dtReal
     state.qteCursorPos = computeCursorPos(state.qteElapsed)
 
     if state.qteElapsed >= cfg.qteDuration then
-      -- Timeout → échec automatique + police
       state.qteRunning = false
       state.cooldown   = cfg.cooldownAfterFail
       alertPolice()
-      sendUI({ type = "qteTimeout" })
-      dbg("QTE timeout")
+      sendUI({ type="qteTimeout" })
+      logWarn(string.format("QTE TIMEOUT après %.1fs. Police alertée.", cfg.qteDuration))
       return
     end
-
-    -- Envoi de la position du curseur à l'UI chaque frame
-    sendUI({ type = "qteTick", pos = state.qteCursorPos })
+    sendUI({ type="qteTick", pos=state.qteCursorPos })
     return
   end
 
-  -- ── Mise à jour périodique de la cible ───────────────────────────────────
+  -- Mise à jour périodique de la cible (pour le HUD live)
   state.targetTimer = state.targetTimer + dtReal
   if state.targetTimer < (1.0 / cfg.targetUpdateHz) then return end
   state.targetTimer = 0.0
 
-  local vehId = findTargetVehicle()
-  if vehId then
-    local part = pickRandomPart(vehId)
-    if part then
-      sendUI({
-        type       = "targetFound",
-        partName   = part.name,
-        value      = part.value,
-        onCooldown = state.cooldown > 0,
-        cooldown   = state.cooldown,
-        wanted     = state.wanted,
-        wantedTime = state.wantedTimer,
-      })
-    else
-      sendUI({
-        type       = "targetExhausted",
-        wanted     = state.wanted,
-        wantedTime = state.wantedTimer,
-      })
-    end
+  local tgt = findTargetAndPart()
+  if tgt then
+    sendUI({
+      type          = "targetFound",
+      partName      = tgt.part.name,
+      value         = tgt.part.value,
+      alreadyStolen = tgt.alreadyStolen,
+      onCooldown    = state.cooldown > 0,
+      cooldown      = state.cooldown,
+      wanted        = state.wanted,
+      wantedTime    = state.wantedTimer,
+    })
   else
     sendUI({
       type       = "idle",
@@ -393,26 +552,27 @@ function M.onCareerModulesActivated()
   state.wantedTimer = 0.0
   state.wanted      = false
   state.targetTimer = 0.0
-  math.randomseed(os.time())
-  dbg("Module activé (career mode)")
-  sendUI({ type = "moduleReady" })
+
+  logInfo("===== Career Thief : activation mode carrière =====")
+  discoverPartInventoryAPI()
+  sendUI({ type="moduleReady", apiHealthy=state.apiHealthy })
 end
 
 function M.onCareerDeactivated()
   state.active     = false
   state.qteRunning = false
-  sendUI({ type = "hide" })
-  dbg("Module désactivé")
+  sendUI({ type="hide" })
+  logInfo("Module désactivé (mode carrière terminé).")
 end
 
--- Alias pour différentes versions de BeamNG
-M.onCareerActive             = M.onCareerModulesActivated
-M.onCareerModuleActivated    = M.onCareerModulesActivated
+-- Alias pour compatibilité multi-versions
+M.onCareerActive          = M.onCareerModulesActivated
+M.onCareerModuleActivated = M.onCareerModulesActivated
 
 -- ── Initialisation de l'extension ─────────────────────────────────────────────
 local function init()
   math.randomseed(os.time())
-  dbg("Extension chargée – en attente du mode carrière")
+  logInfo("Extension Career Thief chargée - en attente du mode carrière.")
 end
 
 init()

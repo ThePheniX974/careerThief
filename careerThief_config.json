@@ -2,10 +2,12 @@
   "_comment": "Configuration du mod Career Thief. Modifiez ces valeurs pour équilibrer la difficulté.",
 
   "targeting": {
-    "maxDistance"     : 9.0,
-    "_maxDistance"    : "Distance maximale (mètres) pour détecter un véhicule cible",
-    "maxAngleDot"     : 0.25,
-    "_maxAngleDot"    : "Cos(angle) min pour le cône frontal. 0.25≈75°, 0.5≈60°, 0.7≈45°. Plus élevé = plus strict"
+    "maxDistance"      : 9.0,
+    "_maxDistance"     : "Distance maximale (mètres) pour le raycast depuis la caméra vers un véhicule cible",
+    "vehicleHitRadius" : 2.4,
+    "_vehicleHitRadius": "Rayon englobant approximatif d'un véhicule pour le test d'intersection du rayon caméra",
+    "maxCamAngleDeg"   : 18.0,
+    "_maxCamAngleDeg"  : "Demi-angle max (degrés) entre la direction caméra et le centre du véhicule. Plus grand = plus permissif."
   },
 
   "qte": {
@@ -26,42 +28,20 @@
     "_wantedDuration"    : "Durée en secondes de l'état 'Recherché'"
   },
 
-  "economy": {
-    "_note": "Les valeurs des pièces sont définies dans thief.lua (tableau PARTS). Chaque pièce a un 'value' modifiable.",
-    "partValueMultiplier": 1.0,
-    "_partValueMultiplier": "Multiplicateur global sur toutes les valeurs de pièces (ex: 1.5 = +50%)"
+  "inventory": {
+    "_note": "Les pièces volées vont exclusivement dans l'inventaire NATIF 'My Parts' de BeamNG via career_modules_partInventory. Aucun inventaire custom n'est tenu par le mod. Si l'API BeamNG n'est pas accessible (hors mode carrière ou version antérieure à 0.32), le vol est bloqué et un message d'erreur explicite est affiché dans le HUD + F10."
   },
 
   "debug": {
-    "debugMode": false,
-    "_debugMode": "Active les logs dans la console GE-Lua (F10) pour le débogage"
+    "debugMode"  : false,
+    "_debugMode" : "Active les logs INFO dans la console GE-Lua (F10). Les WARN et ERROR restent toujours visibles."
   },
 
   "presets": {
     "_note": "Profils de difficulté prédéfinis (à appliquer manuellement dans thief.lua)",
-    "facile": {
-      "qteDuration"    : 5.0,
-      "cursorSpeed"    : 0.38,
-      "successZone"    : 0.28,
-      "wantedDuration" : 60.0
-    },
-    "normal": {
-      "qteDuration"    : 4.0,
-      "cursorSpeed"    : 0.55,
-      "successZone"    : 0.18,
-      "wantedDuration" : 120.0
-    },
-    "difficile": {
-      "qteDuration"    : 3.0,
-      "cursorSpeed"    : 0.80,
-      "successZone"    : 0.11,
-      "wantedDuration" : 180.0
-    },
-    "expert": {
-      "qteDuration"    : 2.5,
-      "cursorSpeed"    : 1.10,
-      "successZone"    : 0.07,
-      "wantedDuration" : 240.0
-    }
+    "facile"   : { "qteDuration": 5.0, "cursorSpeed": 0.38, "successZone": 0.28, "wantedDuration": 60.0  },
+    "normal"   : { "qteDuration": 4.0, "cursorSpeed": 0.55, "successZone": 0.18, "wantedDuration": 120.0 },
+    "difficile": { "qteDuration": 3.0, "cursorSpeed": 0.80, "successZone": 0.11, "wantedDuration": 180.0 },
+    "expert"   : { "qteDuration": 2.5, "cursorSpeed": 1.10, "successZone": 0.07, "wantedDuration": 240.0 }
   }
 }
