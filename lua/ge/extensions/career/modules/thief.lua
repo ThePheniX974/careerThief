@@ -429,44 +429,166 @@ local function detachPartVisually(vehId, slot)
   return true
 end
 
--- ── Ajout à l'inventaire natif My Parts via cascade pcall ───────────────────
--- Essaie plusieurs signatures connues/probables. Loggue ce qui marche.
--- Retourne true si une signature a réussi, false sinon.
-local function addToMyParts(part, sourceVehId)
+-- ── Construction d'une pièce valide pour career_modules_partInventory ────────
+-- La fonction native addPartToInventory(part) attend un objet part complet tel que
+-- produit par addPartFromTree() dans partInventory.lua (BeamNG 0.32+) :
+--   { name, value, description, partCondition, tags, vehicleModel,
+--     location, containingSlot, partPath, mainPart }
+--
+-- Comme on vole sur un véhicule de TRAFFIC (pas dans career_modules_inventory),
+-- on doit reconstruire cet objet à la main en lisant la partsTree du véhicule
+-- cible via core_vehicle_manager.getVehicleData(vehObjId).
+--
+-- catalogPart.slot est un mot-clé de zone (hood, fender_L, door_R, wheel_FL,
+-- bumper_F, ...) qu'on mappe à un nœud réel de la partsTree en matchant le
+-- path ou le chosenPartName.
+local function findNodeForCatalogSlot(tree, slotKeyword)
+  if not tree or not slotKeyword then return nil end
+
+  local kwLower = slotKeyword:lower()
+  local bestMatch = nil
+
+  local function walk(node)
+    if not node then return end
+
+    if node.chosenPartName and node.chosenPartName ~= "" then
+      local pathLower = (node.path or ""):lower()
+      local partLower = node.chosenPartName:lower()
+      -- Match en priorité sur le path, sinon sur le nom de la pièce choisie.
+      if pathLower:find(kwLower, 1, true) or partLower:find(kwLower, 1, true) then
+        bestMatch = node
+        return -- première occurrence suffit
+      end
+    end
+
+    if node.children then
+      for _, child in pairs(node.children) do
+        if bestMatch then return end
+        walk(child)
+      end
+    end
+  end
+
+  walk(tree)
+  return bestMatch
+end
+
+local function buildPartObject(vehObj, catalogPart)
+  if not vehObj then return nil, "vehObj nil" end
+
+  local okData, vehicleData = pcall(function()
+    return extensions.core_vehicle_manager.getVehicleData(vehObj:getID())
+  end)
+  if not okData or not vehicleData then
+    return nil, "getVehicleData KO"
+  end
+
+  local partsTree = vehicleData.config and vehicleData.config.partsTree
+  if not partsTree then
+    return nil, "partsTree absent"
+  end
+
+  local node = findNodeForCatalogSlot(partsTree, catalogPart.slot)
+  if not node then
+    return nil, "slot '" .. tostring(catalogPart.slot) .. "' introuvable dans partsTree"
+  end
+
+  -- Description JBeam : optionnelle, on la récupère si jbeamIO est dispo
+  local description = "Pièce volée (" .. catalogPart.name .. ")"
+  local okJbeam, jbeamIO = pcall(require, "jbeam/io")
+  if okJbeam and jbeamIO and vehicleData.ioCtx then
+    local availableParts = jbeamIO.getAvailableParts(vehicleData.ioCtx)
+    if availableParts and availableParts[node.chosenPartName] then
+      description = availableParts[node.chosenPartName]
+    end
+  end
+
+  local jbeamFile
+  pcall(function() jbeamFile = vehObj:getJBeamFilename() end)
+
+  -- partCondition minimaliste : pièce en parfait état (on vient de la voler donc neuf)
+  local partCondition = {
+    integrityValue = 1.0,
+    visualValue    = 1.0,
+    odometer       = 0,
+  }
+
+  local containingSlot = node.path or "/"
+  local part = {
+    name           = node.chosenPartName,
+    value          = catalogPart.value or 100,
+    description    = description,
+    partCondition  = partCondition,
+    tags           = { "stolen", "careerThief" },
+    vehicleModel   = jbeamFile or "unknown",
+    location       = 0, -- 0 = stockée dans l'inventaire (pas installée sur un véhicule)
+    containingSlot = containingSlot,
+    partPath       = containingSlot .. node.chosenPartName,
+    mainPart       = (containingSlot == "/"),
+  }
+
+  return part
+end
+
+-- ── Ajout à l'inventaire natif My Parts ──────────────────────────────────────
+-- Signatures réellement exposées par BeamNG 0.32+ (vérifiées via le dump F10) :
+--   addPartToInventory(part)    -- insère une pièce dans l'inventaire
+--   generateAndGetPartsFromVehicle(inventoryId) -- pour véhicules du joueur seulement
+--   getInventory()              -- renvoie toute la table
+-- On construit l'objet part manuellement puis on appelle addPartToInventory.
+-- Fallback sur les anciennes signatures au cas où l'API évoluerait.
+local function addToMyParts(catalogPart, sourceVehId)
   local api = career_modules_partInventory
   if not api then
-    logError("career_modules_partInventory indisponible au moment du vol. Impossible d'ajouter la pièce à My Parts.")
-    sendUI({ type="inventoryUnavailable", reason="no_api" })
+    logError("career_modules_partInventory indisponible au moment du vol.")
+    sendUI({ type = "inventoryUnavailable", reason = "no_api" })
     return false
   end
 
-  local tried = {}
+  -- Voie principale : addPartToInventory(part) avec part construit depuis la partsTree
+  if type(api.addPartToInventory) == "function" then
+    local vehObj = be:getObjectByID(sourceVehId)
+    local part, buildErr = buildPartObject(vehObj, catalogPart)
+    if part then
+      local ok, err = pcall(api.addPartToInventory, part)
+      if ok then
+        logInfo(string.format("Pièce ajoutée via addPartToInventory(part) : name=%s slot=%s value=%d",
+          part.name, part.containingSlot, part.value))
+        return true
+      end
+      logWarn("addPartToInventory a levé une erreur : " .. tostring(err))
+    else
+      logWarn("Construction de l'objet part impossible : " .. tostring(buildErr))
+      logWarn("  → On tente quand même les signatures legacy ci-dessous.")
+    end
+  end
+
+  -- Cascade legacy (versions antérieures ou forks)
+  local tried = { "addPartToInventory(part construit)" }
   local function tryFn(fnName, ...)
     table.insert(tried, fnName)
     if type(api[fnName]) ~= "function" then return false end
     local ok, err = pcall(api[fnName], ...)
     if ok then
-      logInfo("Pièce ajoutée à My Parts via " .. fnName .. "()")
+      logInfo("Pièce ajoutée à My Parts via " .. fnName .. "() (legacy)")
       return true
     end
-    logWarn("Appel " .. fnName .. "() a levé une erreur : " .. tostring(err))
+    logWarn("Appel legacy " .. fnName .. "() a levé une erreur : " .. tostring(err))
     return false
   end
 
-  -- Ordre du plus idéal (déplacement atomique) au plus basique.
-  if tryFn("movePartFromVehicleToInventory", sourceVehId, part.slot) then return true end
-  if tryFn("movePartToInventory",            sourceVehId, part.slot) then return true end
-  if tryFn("addPartFromVehicle",             sourceVehId, part.slot) then return true end
-  if tryFn("addPart", part.slot, { name=part.name, value=part.value, condition=1.0 }) then return true end
-  if tryFn("addPart", { slot=part.slot, name=part.name, value=part.value }) then return true end
-  if tryFn("addInventoryPart", { slot=part.slot, name=part.name, value=part.value }) then return true end
-  if tryFn("addItemToInventory", { slot=part.slot, name=part.name, value=part.value }) then return true end
+  if tryFn("movePartFromVehicleToInventory", sourceVehId, catalogPart.slot) then return true end
+  if tryFn("movePartToInventory",            sourceVehId, catalogPart.slot) then return true end
+  if tryFn("addPartFromVehicle",             sourceVehId, catalogPart.slot) then return true end
+  if tryFn("addPart", catalogPart.slot, { name = catalogPart.name, value = catalogPart.value, condition = 1.0 }) then return true end
+  if tryFn("addInventoryPart", { slot = catalogPart.slot, name = catalogPart.name, value = catalogPart.value }) then return true end
+  if tryFn("addItemToInventory", { slot = catalogPart.slot, name = catalogPart.name, value = catalogPart.value }) then return true end
 
-  logError("Aucune signature d'ajout connue n'a réussi.")
-  logError("  Signatures tentées : " .. table.concat(tried, ", "))
-  logError("  Fonctions réellement exposées par l'API : " .. table.concat(state.apiFunctions, ", "))
-  logError("  → Ajoute manuellement la fonction gagnante dans addToMyParts() (thief.lua).")
-  sendUI({ type="inventoryUnavailable", reason="no_signature" })
+  logError("Aucune méthode d'ajout n'a réussi.")
+  logError("  Tentées : " .. table.concat(tried, ", "))
+  logError("  Exposées par l'API : " .. table.concat(state.apiFunctions, ", "))
+  logError("  → Vérifie la structure de buildPartObject() dans thief.lua")
+  sendUI({ type = "inventoryUnavailable", reason = "no_signature" })
   return false
 end
 
