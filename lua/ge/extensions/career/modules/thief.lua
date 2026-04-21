@@ -139,6 +139,37 @@ local function discoverPartInventoryAPI()
   return true
 end
 
+-- ── Découverte de l'API police (native BeamNG, étendue par RLS) ──────────────
+-- Diagnostic au démarrage. Non bloquant : si absent, alertPolice() fera un log et
+-- se contentera d'afficher l'état wanted dans le HUD.
+local function discoverPoliceAPI()
+  local essentials = { "setPursuitMode", "setupPursuitGameplay", "setPursuitVars", "getPursuitData" }
+  if not gameplay_police then
+    logWarn("gameplay_police introuvable - la police ne pourra pas être alertée par le système natif.")
+    return false
+  end
+
+  local missing = {}
+  for _, fn in ipairs(essentials) do
+    if type(gameplay_police[fn]) ~= "function" then
+      table.insert(missing, fn)
+    end
+  end
+
+  if #missing > 0 then
+    logWarn("gameplay_police présent mais il manque : " .. table.concat(missing, ", "))
+  else
+    logInfo("API gameplay_police OK (setPursuitMode, setupPursuitGameplay, setPursuitVars, getPursuitData).")
+  end
+
+  if not gameplay_traffic or type(gameplay_traffic.getTrafficData) ~= "function" then
+    logWarn("gameplay_traffic.getTrafficData introuvable - impossible d'inscrire le joueur comme suspect.")
+    return false
+  end
+  logInfo("API gameplay_traffic OK (getTrafficData disponible).")
+  return #missing == 0
+end
+
 -- ── Raycast depuis la caméra du jeu ──────────────────────────────────────────
 -- Retourne { vehId, hitPos, dist } ou nil si rien de valable n'est touché.
 local function raycastCamera()
@@ -262,25 +293,109 @@ local function pickPartFromHit(vehId, hitPos)
 end
 
 -- ── Alerte police ─────────────────────────────────────────────────────────────
+-- Utilise l'API police NATIVE de BeamNG (gameplay_police + gameplay_traffic),
+-- qui est aussi celle que RLS Career Overhaul surcharge et étend.
+-- Référence : https://github.com/RLS-Modding/rls_career_overhaul
+--   - lua/ge/extensions/overrides/gameplay/police.lua (setPursuitMode, setupPursuitGameplay, setPursuitVars)
+--   - lua/ge/extensions/overrides/gameplay/traffic/vehicle.lua (triggerOffense, pursuit.addScore)
+--   - lua/ge/extensions/career/modules/enforcement.lua (hook onPursuitAction)
+--
+-- Stratégie (dans l'ordre) :
+--   1. S'assurer que le véhicule joueur est dans gameplay_traffic.
+--   2. Enregistrer une infraction « partTheft » via triggerOffense (idiomatique) →
+--      déclenche la poursuite automatiquement si le score dépasse les scoreLevels.
+--   3. Forcer gameplay_police.setPursuitMode(2, playerVehId) en secours direct.
+--   4. Aligner la durée d'évasion sur cfg.wantedDuration via setPursuitVars.
+--   5. Fallback legacy pour les versions qui exposent encore career_modules_lawEnforcement.
 local function alertPolice()
   state.wanted      = true
   state.wantedTimer = cfg.wantedDuration
 
-  if career_modules_lawEnforcement then
-    if career_modules_lawEnforcement.setWantedLevel then
-      pcall(career_modules_lawEnforcement.setWantedLevel, 3)
-      logInfo("Police alertée via setWantedLevel(3).")
-    elseif career_modules_lawEnforcement.onCrime then
-      pcall(career_modules_lawEnforcement.onCrime, { type="vehicleTheft", severity=3 })
-      logInfo("Police alertée via onCrime(vehicleTheft).")
-    else
-      logWarn("career_modules_lawEnforcement présent mais aucune fonction compatible (setWantedLevel / onCrime). État wanted UI uniquement.")
+  local playerVehId = be and be:getPlayerVehicleID(0)
+  local alerted = false
+
+  if playerVehId and playerVehId >= 0 and gameplay_police and gameplay_traffic then
+    -- Aligner le temps d'évasion du système de poursuite natif sur notre wantedDuration
+    if gameplay_police.setPursuitVars then
+      pcall(gameplay_police.setPursuitVars, { evadeTime = cfg.wantedDuration })
     end
-  else
-    logWarn("career_modules_lawEnforcement introuvable - police simulée uniquement dans le HUD.")
+
+    -- S'assurer que le joueur est inscrit dans la traffic data, requis pour qu'une
+    -- poursuite puisse être tracée sur lui. gameplay_police.setupPursuitGameplay
+    -- le fait proprement (équivalent à gameplay_traffic.insertTraffic + setRole('suspect')).
+    local trafficData = gameplay_traffic.getTrafficData and gameplay_traffic.getTrafficData() or {}
+    if not trafficData[playerVehId] and gameplay_police.setupPursuitGameplay then
+      local okSetup, errSetup = pcall(gameplay_police.setupPursuitGameplay, playerVehId, nil, {
+        pursuitMode      = 2,
+        preventAutoStart = true,
+      })
+      if okSetup then
+        logInfo("setupPursuitGameplay OK pour véhicule joueur " .. tostring(playerVehId))
+        trafficData = gameplay_traffic.getTrafficData and gameplay_traffic.getTrafficData() or {}
+      else
+        logWarn("setupPursuitGameplay a échoué : " .. tostring(errSetup))
+      end
+    end
+
+    -- Voie idiomatique RLS : enregistrer une infraction sur le traffic vehicle.
+    -- triggerOffense ajoute 'partTheft' à pursuit.offensesList et bump pursuit.addScore,
+    -- ce qui est traité ensuite par gameplay_police.onUpdate (déclenchement automatique
+    -- du mode de poursuite selon scoreLevels = {100, 500, 2000}).
+    local trafficVeh = trafficData[playerVehId]
+    if trafficVeh and type(trafficVeh.triggerOffense) == "function" then
+      local okOff = pcall(function()
+        trafficVeh:triggerOffense({ key = "partTheft", value = "vehiclePart", score = 600 })
+      end)
+      if okOff then
+        logInfo("Infraction 'partTheft' enregistrée sur pursuit (score +600).")
+        alerted = true
+      else
+        logWarn("triggerOffense('partTheft') a échoué.")
+      end
+    elseif trafficVeh and trafficVeh.pursuit then
+      -- Plan B : pousser directement addScore (même effet sans le tag d'infraction)
+      trafficVeh.pursuit.addScore = (trafficVeh.pursuit.addScore or 0) + 600
+      logInfo("pursuit.addScore bumpé de +600 (triggerOffense indisponible).")
+    end
+
+    -- Coup de grâce : forcer le mode de poursuite actif immédiatement (mode 2 = poursuite).
+    -- Ça garantit que la police démarre tout de suite, sans attendre le prochain tick de
+    -- gameplay_police.onUpdate ou l'accumulation de score.
+    if gameplay_police.setPursuitMode then
+      local okMode, errMode = pcall(gameplay_police.setPursuitMode, 2, playerVehId)
+      if okMode then
+        alerted = true
+        logInfo("gameplay_police.setPursuitMode(2, " .. tostring(playerVehId) .. ") - poursuite active.")
+      else
+        logWarn("gameplay_police.setPursuitMode a échoué : " .. tostring(errMode))
+      end
+    end
+
+    -- Notifier aussi via le hook, pour que enforcement.lua (RLS) puisse réagir s'il
+    -- est chargé. RLS écoute onPursuitAction('start'|'reset'|'evade'|'arrest').
+    -- NB: 'start' est normalement déclenché par setPursuitMode lui-même, donc on ne
+    -- le rejoue pas ici pour éviter un double-traitement.
   end
 
-  sendUI({ type="wantedStart", duration=cfg.wantedDuration })
+  -- Fallback pour les versions anciennes qui exposaient encore career_modules_lawEnforcement
+  -- (n'existe plus dans les BeamNG récents ni dans RLS Career Overhaul >= 2.6).
+  if not alerted and career_modules_lawEnforcement then
+    if career_modules_lawEnforcement.setWantedLevel then
+      pcall(career_modules_lawEnforcement.setWantedLevel, 3)
+      alerted = true
+      logInfo("Fallback legacy : setWantedLevel(3).")
+    elseif career_modules_lawEnforcement.onCrime then
+      pcall(career_modules_lawEnforcement.onCrime, { type = "vehicleTheft", severity = 3 })
+      alerted = true
+      logInfo("Fallback legacy : onCrime(vehicleTheft).")
+    end
+  end
+
+  if not alerted then
+    logWarn("Aucune API police disponible (gameplay_police / gameplay_traffic / career_modules_lawEnforcement) - état wanted affiché en HUD uniquement.")
+  end
+
+  sendUI({ type = "wantedStart", duration = cfg.wantedDuration })
 end
 
 -- ── Détachement visuel sur le véhicule cible via partmgmt VLUA ───────────────
@@ -555,6 +670,7 @@ function M.onCareerModulesActivated()
 
   logInfo("===== Career Thief : activation mode carrière =====")
   discoverPartInventoryAPI()
+  discoverPoliceAPI()
   sendUI({ type="moduleReady", apiHealthy=state.apiHealthy })
 end
 

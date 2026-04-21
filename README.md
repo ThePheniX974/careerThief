@@ -139,7 +139,12 @@ Si un vol échoue avec `[ERROR] Aucune signature d'ajout connue n'a réussi`, la
 
 - **BeamNG Drive** 0.32+ (requis pour `career_modules_partInventory`)
 - Compatible avec les mods de carrière existants (RLS Career Overhaul, etc.)
-- L'intégration police fonctionne si `career_modules_lawEnforcement` est disponible (sinon état wanted affiché dans le HUD uniquement)
+- L'intégration police utilise l'API **native BeamNG** `gameplay_police` + `gameplay_traffic`, la même que celle surchargée par [RLS Career Overhaul](https://github.com/RLS-Modding/rls_career_overhaul) (`overrides/gameplay/police.lua`). À chaque vol (succès ou échec) :
+  1. Le véhicule du joueur est inscrit dans `gameplay_traffic` si nécessaire (via `gameplay_police.setupPursuitGameplay`).
+  2. Une infraction `partTheft` (score 600) est enregistrée via `trafficVeh:triggerOffense(...)` — idiomatique RLS, apparaît dans la liste d'infractions à l'arrestation.
+  3. `gameplay_police.setPursuitMode(2, playerVehId)` force une poursuite active immédiate.
+  4. `gameplay_police.setPursuitVars({ evadeTime = wantedDuration })` aligne le temps d'évasion natif sur la config du mod.
+- Si `gameplay_police` est indisponible (hors mode carrière, ou traffic désactivé), un fallback legacy tente `career_modules_lawEnforcement`, puis affiche l'état wanted uniquement dans le HUD.
 - Le détachement visuel utilise `partmgmt.setPartsConfig` côté VLUA du véhicule cible
 
 ---
