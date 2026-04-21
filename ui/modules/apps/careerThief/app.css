@@ -3,8 +3,6 @@
    Design : Industriel / Surveillance, palettes sombres + accent orange-rouge
    ═══════════════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@400;600;700;900&display=swap');
-
 /* ── Variables ─────────────────────────────────────────────────────────── */
 .ct-root {
   --ct-accent    : #e8820a;     /* orange crime */
@@ -15,8 +13,8 @@
   --ct-bg-mid    : rgba(18, 18, 26, 0.72);
   --ct-border    : rgba(255, 255, 255, 0.08);
   --ct-text      : #dde0e8;
-  --ct-mono      : 'Share Tech Mono', monospace;
-  --ct-display   : 'Barlow Condensed', sans-serif;
+  --ct-mono      : Consolas, 'Courier New', monospace;
+  --ct-display   : 'Segoe UI', Tahoma, sans-serif;
 }
 
 /* ── Conteneur racine ───────────────────────────────────────────────────── */

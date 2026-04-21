@@ -143,17 +143,18 @@ angular.module('beamng.apps')
         break;
 
       case 'qteSuccess':
-        $scope.wanted.active  = true;
-        $scope.wanted.timeStr = formatTime(120);
+        // Vol réussi : discret, pas de police, pas de statut recherché.
         showFeedback('ct-success', '+', d.partName + ' volée !', 'Envoyée dans My Parts', 3.5);
         break;
 
       case 'qteFail':
-        $scope.wanted.active  = true;
-        $scope.wanted.timeStr = formatTime(120);
         if (d.reason === 'inventory_failed') {
-          showFeedback('ct-fail', '!', 'Transfert échoué', 'Inventaire BeamNG indisponible (voir F10)', 4);
+          // Bug technique (API) : pas d'alerte police, juste un message d'info.
+          showFeedback('ct-fail', '!', 'Transfert échoué', 'Bug inventaire BeamNG (voir F10)', 4);
         } else {
+          // Vrai échec de timing : police alertée.
+          $scope.wanted.active  = true;
+          $scope.wanted.timeStr = formatTime(120);
           showFeedback('ct-fail', 'x', 'Raté !', 'Police alertée', 3);
         }
         break;

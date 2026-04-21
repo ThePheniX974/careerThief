@@ -42,33 +42,64 @@ end
 
 -- ── Catalogue des pièces volables ─────────────────────────────────────────────
 -- zone = { lon=F|M|R, side=L|C|R, vert=H|M|L } projection normalisée dans la demi-bbox du véhicule.
--- slot  = nom de slot Jbeam standard BeamNG (pour détacher via partmgmt / partInventory).
+-- slot     = mot-clé principal recherché (tolérant : underscores, casse, position).
+-- slotAlts = mots-clés alternatifs essayés si le principal ne matche rien.
 local PARTS = {
   -- AVANT (lon=F)
-  { id="hood",       name="Capot moteur",       value=230, slot="hood",        zone={lon="F", side="C", vert="H"} },
-  { id="bumperF",    name="Pare-chocs avant",   value=145, slot="bumper_F",    zone={lon="F", side="C", vert="L"} },
-  { id="headlightL", name="Phare gauche",       value=95,  slot="headlight_L", zone={lon="F", side="L", vert="M"} },
-  { id="headlightR", name="Phare droit",        value=95,  slot="headlight_R", zone={lon="F", side="R", vert="M"} },
-  { id="fenderFL",   name="Aile avant gauche",  value=100, slot="fender_L",    zone={lon="F", side="L", vert="H"} },
-  { id="fenderFR",   name="Aile avant droite",  value=100, slot="fender_R",    zone={lon="F", side="R", vert="H"} },
-  { id="wheel_fl",   name="Roue avant gauche",  value=185, slot="wheel_FL",    zone={lon="F", side="L", vert="L"} },
-  { id="wheel_fr",   name="Roue avant droite",  value=185, slot="wheel_FR",    zone={lon="F", side="R", vert="L"} },
+  { id="hood",       name="Capot moteur",       value=230, slot="hood",
+    slotAlts={"bonnet"}, zone={lon="F", side="C", vert="H"} },
+  { id="bumperF",    name="Pare-chocs avant",   value=145, slot="bumper_F",
+    slotAlts={"bumperF","frontbumper","bumper_front"}, zone={lon="F", side="C", vert="L"} },
+  { id="headlightL", name="Phare gauche",       value=95,  slot="headlight_L",
+    slotAlts={"headlightL","light_L"}, zone={lon="F", side="L", vert="M"} },
+  { id="headlightR", name="Phare droit",        value=95,  slot="headlight_R",
+    slotAlts={"headlightR","light_R"}, zone={lon="F", side="R", vert="M"} },
+  { id="fenderFL",   name="Aile avant gauche",  value=100, slot="fender_L",
+    slotAlts={"fenderL","wing_L"}, zone={lon="F", side="L", vert="H"} },
+  { id="fenderFR",   name="Aile avant droite",  value=100, slot="fender_R",
+    slotAlts={"fenderR","wing_R"}, zone={lon="F", side="R", vert="H"} },
+  -- Pour les roues, on utilise 2 tokens (wheel + FL) qui matchent toutes les
+  -- variantes BeamNG : wheel_F_L, wheel_FL, wheelhub_FL, etc. Sur les véhicules
+  -- simplifiés (simple_traffic), les slots L/R n'existent pas, on tombe sur
+  -- wheels_F/wheels_R (une seule pièce par essieu) via les slotAlts.
+  { id="wheel_fl",   name="Roue avant gauche",  value=185, slot="wheel FL",
+    slotAlts={"wheel F L","tire FL","tire F L","wheels_F","wheels F"},
+    zone={lon="F", side="L", vert="L"} },
+  { id="wheel_fr",   name="Roue avant droite",  value=185, slot="wheel FR",
+    slotAlts={"wheel F R","tire FR","tire F R","wheels_F","wheels F"},
+    zone={lon="F", side="R", vert="L"} },
 
   -- MILIEU (lon=M)
-  { id="mirrorL",    name="Rétroviseur gauche", value=50,  slot="mirror_L",    zone={lon="M", side="L", vert="H"} },
-  { id="mirrorR",    name="Rétroviseur droit",  value=50,  slot="mirror_R",    zone={lon="M", side="R", vert="H"} },
-  { id="sideL",      name="Bas de caisse gauche", value=75,slot="skirt_L",     zone={lon="M", side="L", vert="L"} },
-  { id="sideR",      name="Bas de caisse droit",  value=75,slot="skirt_R",     zone={lon="M", side="R", vert="L"} },
-  { id="doorL",      name="Portière gauche",    value=140, slot="door_L",      zone={lon="M", side="L", vert="M"} },
-  { id="doorR",      name="Portière droite",    value=140, slot="door_R",      zone={lon="M", side="R", vert="M"} },
-  { id="antenna",    name="Antenne",            value=35,  slot="antenna",     zone={lon="M", side="C", vert="H"} },
+  -- Rétroviseurs : sur simple_traffic il n'y a qu'une seule pièce 'mirrors'
+  -- pour les deux côtés, d'où le fallback.
+  { id="mirrorL",    name="Rétroviseur gauche", value=50,  slot="mirror_L",
+    slotAlts={"mirrorL","mirrors"}, zone={lon="M", side="L", vert="H"} },
+  { id="mirrorR",    name="Rétroviseur droit",  value=50,  slot="mirror_R",
+    slotAlts={"mirrorR","mirrors"}, zone={lon="M", side="R", vert="H"} },
+  { id="sideL",      name="Bas de caisse gauche", value=75,slot="skirt_L",
+    slotAlts={"skirtL","rocker_L"}, zone={lon="M", side="L", vert="L"} },
+  { id="sideR",      name="Bas de caisse droit",  value=75,slot="skirt_R",
+    slotAlts={"skirtR","rocker_R"}, zone={lon="M", side="R", vert="L"} },
+  { id="doorL",      name="Portière gauche",    value=140, slot="door_L",
+    slotAlts={"doorL","door_FL"}, zone={lon="M", side="L", vert="M"} },
+  { id="doorR",      name="Portière droite",    value=140, slot="door_R",
+    slotAlts={"doorR","door_FR"}, zone={lon="M", side="R", vert="M"} },
+  { id="antenna",    name="Antenne",            value=35,  slot="antenna",
+    slotAlts={"aerial"}, zone={lon="M", side="C", vert="H"} },
 
   -- ARRIÈRE (lon=R)
-  { id="trunk",      name="Coffre / Hayon",     value=200, slot="tailgate",    zone={lon="R", side="C", vert="H"} },
-  { id="bumperR",    name="Pare-chocs arrière", value=115, slot="bumper_R",    zone={lon="R", side="C", vert="L"} },
-  { id="exhaust",    name="Silencieux",         value=90,  slot="exhaust",     zone={lon="R", side="C", vert="M"} },
-  { id="wheel_rl",   name="Roue arrière gauche",value=165, slot="wheel_RL",    zone={lon="R", side="L", vert="L"} },
-  { id="wheel_rr",   name="Roue arrière droite",value=165, slot="wheel_RR",    zone={lon="R", side="R", vert="L"} },
+  { id="trunk",      name="Coffre / Hayon",     value=200, slot="tailgate",
+    slotAlts={"trunk","boot","hatch"}, zone={lon="R", side="C", vert="H"} },
+  { id="bumperR",    name="Pare-chocs arrière", value=115, slot="bumper_R",
+    slotAlts={"bumperR","rearbumper","bumper_rear"}, zone={lon="R", side="C", vert="L"} },
+  { id="exhaust",    name="Silencieux",         value=90,  slot="exhaust",
+    slotAlts={"muffler","tailpipe"}, zone={lon="R", side="C", vert="M"} },
+  { id="wheel_rl",   name="Roue arrière gauche",value=165, slot="wheel RL",
+    slotAlts={"wheel R L","tire RL","tire R L","wheels_R","wheels R"},
+    zone={lon="R", side="L", vert="L"} },
+  { id="wheel_rr",   name="Roue arrière droite",value=165, slot="wheel RR",
+    slotAlts={"wheel R R","tire RR","tire R R","wheels_R","wheels R"},
+    zone={lon="R", side="R", vert="L"} },
 }
 
 -- ── État interne ──────────────────────────────────────────────────────────────
@@ -170,8 +201,102 @@ local function discoverPoliceAPI()
   return #missing == 0
 end
 
+-- Récupère le "vrai" centre géométrique du véhicule et ses demi-extents.
+-- vPos (obj:getPosition()) correspond à l'origine du jbeam, souvent décalée
+-- par rapport au centre de la carrosserie. On préfère le centre de l'OOBB
+-- qui lui est géométriquement centré sur la carrosserie.
+local function getVehicleGeometry(obj)
+  local okPos, vPos = pcall(function() return obj:getPosition() end)
+  local okFwd, vFwd = pcall(function() return obj:getDirectionVector() end)
+  local okUp,  vUp  = pcall(function() return obj:getDirectionVectorUp() end)
+  if not (okPos and vPos and okFwd and vFwd and okUp and vUp) then return nil end
+
+  local vRight = vecCross(vFwd, vUp)
+  local halfLen, halfWid, halfHgt = 2.3, 1.0, 0.8
+  local center = vPos  -- fallback : position brute du véhicule
+
+  local okBB, bb = pcall(function() return obj:getSpawnWorldOOBB() end)
+  if okBB and bb then
+    local okHe, he = pcall(function() return bb:getHalfExtents() end)
+    if okHe and he then
+      halfLen = math.max(he.x, 0.5)
+      halfWid = math.max(he.y, 0.5)
+      halfHgt = math.max(he.z, 0.3)
+    end
+    -- Le centre de l'OBB corrige le décalage origine-jbeam -> centre carrosserie
+    local okCtr, ctr = pcall(function() return bb:getCenter() end)
+    if okCtr and ctr then
+      center = { x=ctr.x, y=ctr.y, z=ctr.z }
+    end
+  end
+
+  return {
+    center   = center,
+    fwd      = vFwd,
+    up       = vUp,
+    right    = vRight,
+    halfLen  = halfLen,
+    halfWid  = halfWid,
+    halfHgt  = halfHgt,
+  }
+end
+
 -- ── Raycast depuis la caméra du jeu ──────────────────────────────────────────
--- Retourne { vehId, hitPos, dist } ou nil si rien de valable n'est touché.
+-- Test rayon-OBB : on projette le rayon caméra dans le repère local du
+-- véhicule (où l'OBB devient une AABB alignée) puis on fait un slab test.
+-- C'est beaucoup plus précis que l'ancien test sphérique, qui englobait des
+-- points bien au-dessous/à côté du véhicule.
+local function rayOBBIntersect(camPos, camFwd, vPos, vFwd, vRight, vUp, halfExtents, maxT)
+  -- Origine du rayon en local véhicule
+  local rel = vecSub(camPos, vPos)
+  local ro = {
+    x = vecDot(rel, vFwd),
+    y = vecDot(rel, vRight),
+    z = vecDot(rel, vUp),
+  }
+  -- Direction du rayon en local véhicule
+  local rd = {
+    x = vecDot(camFwd, vFwd),
+    y = vecDot(camFwd, vRight),
+    z = vecDot(camFwd, vUp),
+  }
+  local h = { x=halfExtents.x, y=halfExtents.y, z=halfExtents.z }
+
+  local tMin, tMax = -math.huge, math.huge
+  for _, axis in ipairs({"x","y","z"}) do
+    local o, dir, half = ro[axis], rd[axis], h[axis]
+    if math.abs(dir) < 1e-6 then
+      -- rayon parallèle à cet axe : le point d'origine doit être dans la tranche
+      if o < -half or o > half then return nil end
+    else
+      local t1 = (-half - o) / dir
+      local t2 = ( half - o) / dir
+      if t1 > t2 then t1, t2 = t2, t1 end
+      if t1 > tMin then tMin = t1 end
+      if t2 < tMax then tMax = t2 end
+      if tMin > tMax then return nil end
+    end
+  end
+  -- tMin = première entrée dans la boîte, tMax = sortie
+  if tMax < 0.5 then return nil end            -- intégralement derrière la caméra
+  local tHit = math.max(tMin, 0.5)              -- si cam déjà dans la boîte, prend 0.5 mini
+  if tHit > maxT then return nil end
+  return tHit
+end
+
+-- Variante du rayOBB : la boîte peut avoir un centre offset local (pour
+-- remonter la base de la voiture au-dessus du sol et éviter les faux positifs
+-- quand on regarde par terre).
+local function rayOBBIntersectOffset(camPos, camFwd, vPos, vFwd, vRight, vUp, center, halfExtents, maxT)
+  -- Centre effectif = vPos + offset_local (exprimé en repère véhicule)
+  local worldCenter = {
+    x = vPos.x + center.x*vFwd.x + center.y*vRight.x + center.z*vUp.x,
+    y = vPos.y + center.x*vFwd.y + center.y*vRight.y + center.z*vUp.y,
+    z = vPos.z + center.x*vFwd.z + center.y*vRight.z + center.z*vUp.z,
+  }
+  return rayOBBIntersect(camPos, camFwd, worldCenter, vFwd, vRight, vUp, halfExtents, maxT)
+end
+
 local function raycastCamera()
   if not core_camera then
     logWarn("core_camera introuvable - raycast impossible.")
@@ -185,7 +310,6 @@ local function raycastCamera()
     return nil
   end
 
-  -- Normaliser la direction (safety)
   local fLen = vecLen(camFwd)
   if fLen < 0.0001 then
     logWarn("Direction caméra dégénérée (longueur nulle).")
@@ -196,28 +320,34 @@ local function raycastCamera()
   local playerVeh = be:getPlayerVehicle(0)
   local playerId  = playerVeh and playerVeh:getID() or -1
 
-  local bestId, bestT, bestVc = nil, cfg.maxDistance, nil
+  local bestId, bestT = nil, cfg.maxDistance
   local vehNames = scenetree.findClassObjects("BeamNGVehicle") or {}
-
-  if #vehNames == 0 then
-    -- Pas de warn : scène sans véhicules, c'est normal au spawn
-    return nil
-  end
+  if #vehNames == 0 then return nil end
 
   for _, name in ipairs(vehNames) do
     local obj = scenetree.findObject(name)
     if obj and obj:getID() ~= playerId then
-      local ok, vc = pcall(function() return obj:getPosition() end)
-      if ok and vc then
-        local d = vecSub(vc, camPos)
+      local g = getVehicleGeometry(obj)
+      if g then
+        local d = vecSub(g.center, camPos)
         local tProj = vecDot(d, camFwd)
-        if tProj > 0.5 and tProj < cfg.maxDistance then
-          local rayPt = { x=camPos.x+tProj*camFwd.x, y=camPos.y+tProj*camFwd.y, z=camPos.z+tProj*camFwd.z }
-          local perp  = vecLen(vecSub(vc, rayPt))
-          if perp < cfg.vehicleHitRadius and tProj < bestT then
-            bestT  = tProj
+        if tProj > -2.0 and tProj < cfg.maxDistance + 4.0 then
+          -- On rétrécit la boîte par le bas pour ignorer le dessous du
+          -- véhicule (regarder par terre sous la voiture ne doit pas compter).
+          local bottomCut = math.min(0.35, g.halfHgt * 0.40)
+          local halfHgtClip = g.halfHgt - bottomCut
+          -- Centre effectif remonté de bottomCut/2 pour que la boîte clippée
+          -- soit centrée sur la moitié haute du véhicule.
+          local centerOffset = { x = 0, y = 0, z = bottomCut }
+          local half = {
+            x = g.halfLen + 0.05,
+            y = g.halfWid + 0.10,
+            z = halfHgtClip + 0.10,
+          }
+          local tHit = rayOBBIntersectOffset(camPos, camFwd, g.center, g.fwd, g.right, g.up, centerOffset, half, cfg.maxDistance)
+          if tHit and tHit < bestT then
+            bestT  = tHit
             bestId = obj:getID()
-            bestVc = vc
           end
         end
       end
@@ -238,42 +368,32 @@ local function pickPartFromHit(vehId, hitPos)
     return nil
   end
 
-  local okPos, vPos = pcall(function() return veh:getPosition() end)
-  local okFwd, vFwd = pcall(function() return veh:getDirectionVector() end)
-  local okUp,  vUp  = pcall(function() return veh:getDirectionVectorUp() end)
-  if not (okPos and vPos and okFwd and vFwd and okUp and vUp) then
-    logWarn("pickPartFromHit: impossible de récupérer pos/orientation du véhicule " .. tostring(vehId))
+  local g = getVehicleGeometry(veh)
+  if not g then
+    logWarn("pickPartFromHit: impossible de récupérer la géométrie du véhicule " .. tostring(vehId))
     return nil
   end
 
-  -- Axes locaux : fwd = +X local, up = +Z local, right = fwd × up
-  local vRight = vecCross(vFwd, vUp)
+  -- Vecteur hit - centre géométrique du véhicule (centre OBB), projeté sur les
+  -- axes locaux. Utiliser getCenter() plutôt que getPosition() corrige le
+  -- décalage origine-jbeam qui faisait que le capot était classé en "milieu".
+  local rel  = vecSub(hitPos, g.center)
+  local xLoc = vecDot(rel, g.fwd)   / g.halfLen  -- avant/arrière (-1..+1)
+  local yLoc = vecDot(rel, g.right) / g.halfWid  -- gauche/droite
+  local zLoc = vecDot(rel, g.up)    / g.halfHgt  -- bas/haut
 
-  -- Dimensions approximatives (demi-extents) — BeamNG expose plusieurs méthodes :
-  local halfLen, halfWid, halfHgt = 2.3, 1.0, 0.8 -- defaults raisonnables pour une berline
-  local okBB, bb = pcall(function() return veh:getSpawnWorldOOBB() end)
-  if okBB and bb then
-    local okHe, he = pcall(function() return bb:getHalfExtents() end)
-    if okHe and he then
-      halfLen = math.max(he.x, 0.5)
-      halfWid = math.max(he.y, 0.5)
-      halfHgt = math.max(he.z, 0.3)
-    end
-  else
-    logInfo("OOBB indisponible pour le véhicule " .. tostring(vehId) .. ", utilisation de dimensions par défaut.")
+  -- Rejet des hits clairement sous la voiture : faux positifs du sol qui
+  -- pourraient traverser la légère marge verticale de l'OBB.
+  if zLoc < -0.85 then
+    logInfo(string.format("Hit rejete : sous la voiture (zLoc=%.2f)", zLoc))
+    return nil
   end
-
-  -- Vecteur hit - centre véhicule, projeté sur les axes locaux
-  local rel  = vecSub(hitPos, vPos)
-  local xLoc = vecDot(rel, vFwd)   / halfLen  -- avant/arrière
-  local yLoc = vecDot(rel, vRight) / halfWid  -- gauche/droite
-  local zLoc = vecDot(rel, vUp)    / halfHgt  -- bas/haut
 
   local lon  = (xLoc >  0.33) and "F" or ((xLoc < -0.33) and "R" or "M")
   local side = (yLoc >  0.33) and "R" or ((yLoc < -0.33) and "L" or "C")
   local vert = (zLoc >  0.33) and "H" or ((zLoc < -0.33) and "L" or "M")
 
-  logInfo(string.format("Hit projeté : lon=%s side=%s vert=%s (xLoc=%.2f yLoc=%.2f zLoc=%.2f)",
+  logInfo(string.format("Hit projete : lon=%s side=%s vert=%s (xLoc=%.2f yLoc=%.2f zLoc=%.2f)",
     lon, side, vert, xLoc, yLoc, zLoc))
 
   -- Recherche d'une pièce catalogue correspondant à cette zone
@@ -398,34 +518,65 @@ local function alertPolice()
   sendUI({ type = "wantedStart", duration = cfg.wantedDuration })
 end
 
--- ── Détachement visuel sur le véhicule cible via partmgmt VLUA ───────────────
-local function detachPartVisually(vehId, slot)
-  if not vehId or not slot then return false end
+-- ── Détachement visuel via beamstate.breakBreakGroup (VLUA) ──────────────────
+-- Les pièces du JBeam sont retenues par des "beams" groupés via breakGroup.
+-- Casser ces beams fait tomber physiquement la pièce de la voiture.
+-- On essaie plusieurs noms candidats car la convention varie selon le véhicule
+-- (ex: "hood", "bonnet", "hood_L", "simple_traffic_fullsize_hood_break").
+local function detachPartVisually(vehId, catalogPart)
+  if not vehId or not catalogPart then return false end
   local veh = be:getObjectByID(vehId)
   if not veh then
-    logWarn("detachPartVisually: véhicule " .. tostring(vehId) .. " introuvable.")
+    logWarn("detachPartVisually: vehicule " .. tostring(vehId) .. " introuvable.")
     return false
   end
 
+  -- Construit la liste de candidats : slot principal + slotAlts + variantes
+  -- communes (lowercase, sans underscores, avec _break).
+  local candidates = { catalogPart.slot }
+  if catalogPart.slotAlts then
+    for _, alt in ipairs(catalogPart.slotAlts) do table.insert(candidates, alt) end
+  end
+  -- Dédoublonnage + variantes
+  local seen, final = {}, {}
+  for _, c in ipairs(candidates) do
+    for _, variant in ipairs({ c, c:lower(), c:lower():gsub("[_%s]", ""), c .. "_break", c:lower() .. "_break" }) do
+      if not seen[variant] then
+        seen[variant] = true
+        table.insert(final, variant)
+      end
+    end
+  end
+
+  -- On sérialise la liste dans la commande VLUA
+  local listStr = "{"
+  for _, n in ipairs(final) do listStr = listStr .. string.format("%q,", n) end
+  listStr = listStr .. "}"
+
   local cmd = string.format([[
     local ok, err = pcall(function()
-      if partmgmt and partmgmt.getConfig then
-        local cfg = partmgmt.getConfig()
-        if cfg and cfg.parts and cfg.parts[%q] then
-          cfg.parts[%q] = ""
-          if partmgmt.setPartsConfig then
-            partmgmt.setPartsConfig(cfg)
-          end
+      local names = %s
+      if not beamstate then return end
+      local broken = 0
+      for _, name in ipairs(names) do
+        if beamstate.breakBreakGroup then
+          local pre = beamstate.beamstate and beamstate.beamstate.brokenBeams or 0
+          beamstate.breakBreakGroup(name)
+          broken = broken + 1
         end
       end
-      if beamstate and beamstate.breakAllBreakGroups_withoutExtraSounds then
-        beamstate.breakAllBreakGroups_withoutExtraSounds()
-      end
+      obj:queueGameEngineLua(string.format(
+        "print('[CareerThief][INFO]  VLUA detach: %%d breakGroups tentes sur veh %d')",
+        broken))
     end)
-    if not ok then obj:queueGameEngineLua("print('[CareerThief][WARN]  VLUA detach echoue: '..tostring(%q))") end
-  ]], slot, slot, "err")
+    if not ok then
+      obj:queueGameEngineLua("print('[CareerThief][WARN]  VLUA detach echoue: '..tostring('" .. tostring(err) .. "'))")
+    end
+  ]], listStr, vehId)
+
   veh:queueLuaCommand(cmd)
-  logInfo("Commande de détachement VLUA envoyée pour slot=" .. slot .. " sur véhicule " .. tostring(vehId))
+  logInfo(string.format("Commande de detachement envoyee : %d candidats sur vehicule %d",
+    #final, vehId))
   return true
 end
 
@@ -442,35 +593,94 @@ end
 -- catalogPart.slot est un mot-clé de zone (hood, fender_L, door_R, wheel_FL,
 -- bumper_F, ...) qu'on mappe à un nœud réel de la partsTree en matchant le
 -- path ou le chosenPartName.
+-- Normalise une chaîne pour comparaison tolérante (casse, underscores, tirets).
+local function normalizeSlotStr(s)
+  if not s then return "" end
+  return s:lower():gsub("[_%-%s]", "")
+end
+
+-- Découpe un mot-clé catalog en tokens (ex: "wheel_FL" -> {"wheel","fl"}).
+local function tokenizeSlotKeyword(keyword)
+  local tokens = {}
+  for tok in keyword:gmatch("[%w]+") do
+    if #tok > 0 then table.insert(tokens, tok:lower()) end
+  end
+  return tokens
+end
+
+-- Collecte tous les nœuds ayant un chosenPartName dans la partsTree.
+local function collectAllPartNodes(tree)
+  local nodes = {}
+  local function walk(node)
+    if not node then return end
+    if node.chosenPartName and node.chosenPartName ~= "" then
+      table.insert(nodes, node)
+    end
+    if node.children then
+      for _, child in pairs(node.children) do walk(child) end
+    end
+  end
+  walk(tree)
+  return nodes
+end
+
+-- Dump lisible des nœuds pour aider au debug quand un slot est introuvable.
+local function dumpPartsTree(tree, maxLines)
+  local nodes = collectAllPartNodes(tree)
+  local lines = {}
+  for i, n in ipairs(nodes) do
+    if i > (maxLines or 80) then
+      table.insert(lines, "  ... (" .. (#nodes - i) .. " autres)")
+      break
+    end
+    table.insert(lines, string.format("  [%d] path='%s' chosenPartName='%s'",
+      i, tostring(n.path), tostring(n.chosenPartName)))
+  end
+  return table.concat(lines, "\n")
+end
+
+-- Cherche un nœud correspondant à un slot catalogue, avec matching tolérant :
+--   1. tous les tokens du keyword doivent apparaître dans path ou chosenPartName
+--   2. comparaison casse-insensible, sans underscores/tirets
+--   3. en cas d'égalité, préférence au match sur path le plus court
 local function findNodeForCatalogSlot(tree, slotKeyword)
   if not tree or not slotKeyword then return nil end
 
-  local kwLower = slotKeyword:lower()
-  local bestMatch = nil
+  local tokens = tokenizeSlotKeyword(slotKeyword)
+  if #tokens == 0 then return nil end
 
-  local function walk(node)
-    if not node then return end
+  local nodes = collectAllPartNodes(tree)
+  local bestNode, bestScore = nil, -1
 
-    if node.chosenPartName and node.chosenPartName ~= "" then
-      local pathLower = (node.path or ""):lower()
-      local partLower = node.chosenPartName:lower()
-      -- Match en priorité sur le path, sinon sur le nom de la pièce choisie.
-      if pathLower:find(kwLower, 1, true) or partLower:find(kwLower, 1, true) then
-        bestMatch = node
-        return -- première occurrence suffit
+  for _, node in ipairs(nodes) do
+    local normPath = normalizeSlotStr(node.path)
+    local normPart = normalizeSlotStr(node.chosenPartName)
+    local haystack = normPath .. "|" .. normPart
+
+    local allMatch = true
+    local score = 0
+    for _, tok in ipairs(tokens) do
+      local tokNorm = normalizeSlotStr(tok)
+      if not haystack:find(tokNorm, 1, true) then
+        allMatch = false
+        break
       end
+      -- bonus si le token apparaît dans le chosenPartName (plus spécifique)
+      if normPart:find(tokNorm, 1, true) then score = score + 2 end
+      if normPath:find(tokNorm, 1, true) then score = score + 1 end
     end
 
-    if node.children then
-      for _, child in pairs(node.children) do
-        if bestMatch then return end
-        walk(child)
+    if allMatch then
+      -- pénalité selon la longueur totale (plus court = plus spécifique)
+      score = score - math.floor(#haystack / 50)
+      if score > bestScore then
+        bestScore = score
+        bestNode = node
       end
     end
   end
 
-  walk(tree)
-  return bestMatch
+  return bestNode
 end
 
 local function buildPartObject(vehObj, catalogPart)
@@ -488,8 +698,27 @@ local function buildPartObject(vehObj, catalogPart)
     return nil, "partsTree absent"
   end
 
-  local node = findNodeForCatalogSlot(partsTree, catalogPart.slot)
+  -- On essaie d'abord le slot principal, puis les alternatives (slotAlts).
+  local candidates = { catalogPart.slot }
+  if catalogPart.slotAlts then
+    for _, alt in ipairs(catalogPart.slotAlts) do table.insert(candidates, alt) end
+  end
+
+  local node
+  for _, kw in ipairs(candidates) do
+    node = findNodeForCatalogSlot(partsTree, kw)
+    if node then
+      logInfo(string.format("Slot catalogue '%s' -> noeud path='%s' part='%s'",
+        tostring(kw), tostring(node.path), tostring(node.chosenPartName)))
+      break
+    end
+  end
+
   if not node then
+    logError(string.format("Aucun mot-cle du catalogue n'a matche la partsTree (essaye: %s).",
+      table.concat(candidates, ", ")))
+    logError("Dump des noeuds disponibles (path / chosenPartName) :")
+    print(dumpPartsTree(partsTree, 120))
     return nil, "slot '" .. tostring(catalogPart.slot) .. "' introuvable dans partsTree"
   end
 
@@ -592,6 +821,31 @@ local function addToMyParts(catalogPart, sourceVehId)
   return false
 end
 
+-- ── Vérifie qu'une pièce catalogue existe réellement sur un véhicule donné ──
+-- Retourne (found:boolean, nodeInfo:string|nil). Ne construit pas l'objet part,
+-- se contente de chercher un nœud qui match le slot ou un des slotAlts.
+local function canStealFromVehicle(vehObj, catalogPart)
+  if not vehObj or not catalogPart then return false end
+  local okData, vehicleData = pcall(function()
+    return extensions.core_vehicle_manager.getVehicleData(vehObj:getID())
+  end)
+  if not okData or not vehicleData then return false end
+  local partsTree = vehicleData.config and vehicleData.config.partsTree
+  if not partsTree then return false end
+
+  local candidates = { catalogPart.slot }
+  if catalogPart.slotAlts then
+    for _, alt in ipairs(catalogPart.slotAlts) do table.insert(candidates, alt) end
+  end
+  for _, kw in ipairs(candidates) do
+    local node = findNodeForCatalogSlot(partsTree, kw)
+    if node then
+      return true, string.format("path='%s' part='%s'", tostring(node.path), tostring(node.chosenPartName))
+    end
+  end
+  return false
+end
+
 -- ── Calcul de la position du curseur QTE (onde triangulaire) ─────────────────
 local function computeCursorPos(elapsed)
   local period = 1.0 / cfg.qteCursorSpeed
@@ -627,13 +881,15 @@ function M.onTheftKeyPressed()
   end
 
   -- Cas 1 : QTE en cours → évaluer
+  -- Règle : la police n'est alertée QUE sur échec (curseur hors zone ou
+  -- timeout). Un vol réussi reste discret, même si l'ajout à l'inventaire
+  -- échoue techniquement (bug API, pas faute du joueur).
   if state.qteRunning then
     local pos     = state.qteCursorPos
     local half    = cfg.qteSuccessZone / 2.0
     local success = (pos >= 0.5 - half) and (pos <= 0.5 + half)
 
     state.qteRunning = false
-    alertPolice()
 
     if success and state.targetVehId and state.targetPart then
       local vehId = state.targetVehId
@@ -647,22 +903,26 @@ function M.onTheftKeyPressed()
         state.stolenParts[vehId] = state.stolenParts[vehId] or {}
         state.stolenParts[vehId][part.id] = true
 
-        -- Détachement visuel (best-effort, indépendant de l'inventaire)
-        detachPartVisually(vehId, part.slot)
+        -- Détachement visuel (best-effort, indépendant de l'inventaire) :
+        -- casse les breakGroups JBeam correspondants → la pièce tombe.
+        detachPartVisually(vehId, part)
 
         state.cooldown = cfg.cooldownAfterSteal
         sendUI({ type="qteSuccess", partName=part.name, value=part.value, cursorPos=pos })
-        logInfo(string.format("SUCCÈS - %s ajoutée à My Parts (valeur indicative %d, curseur=%.2f)", part.name, part.value, pos))
+        logInfo(string.format("SUCCES discret - %s ajoutee a My Parts (valeur indicative %d, curseur=%.2f)", part.name, part.value, pos))
       else
-        -- API down : on compte comme un échec, police déjà alertée
+        -- Bug technique (API inventaire) : on n'alerte pas la police, ce n'est
+        -- pas la faute du joueur. Simple cooldown d'échec.
         state.cooldown = cfg.cooldownAfterFail
         sendUI({ type="qteFail", cursorPos=pos, reason="inventory_failed" })
-        logWarn("QTE réussi mais l'ajout à My Parts a échoué → vol annulé (police quand même alertée).")
+        logWarn("QTE reussi mais ajout a My Parts echoue (probleme API) -> vol annule, police NON alertee.")
       end
     else
+      -- Échec du curseur : la police est alertée.
       state.cooldown = cfg.cooldownAfterFail
+      alertPolice()
       sendUI({ type="qteFail", cursorPos=pos })
-      logWarn(string.format("QTE ÉCHEC - curseur=%.3f hors zone [%.3f..%.3f]. Police alertée.",
+      logWarn(string.format("QTE ECHEC - curseur=%.3f hors zone [%.3f..%.3f]. Police alertee.",
         pos, 0.5-half, 0.5+half))
     end
 
@@ -700,6 +960,23 @@ function M.onTheftKeyPressed()
     sendUI({ type="inventoryUnavailable", reason="no_api" })
     logError("Impossible de démarrer le QTE : career_modules_partInventory toujours absent.")
     return
+  end
+
+  -- Cas 4bis : précheck que la pièce existe vraiment sur ce véhicule.
+  -- Sans ça, le joueur peut réussir le QTE pour rien (ex: antenne sur simple_traffic)
+  -- et se faire prendre en flag par la police alors que le vol est impossible.
+  local targetVehObj = be:getObjectByID(tgt.vehId)
+  local existsOnVeh, nodeInfo = canStealFromVehicle(targetVehObj, tgt.part)
+  if not existsOnVeh then
+    sendUI({
+      type     = "alreadyStolen",   -- réutilise le canal feedback jaune
+      partName = tgt.part.name .. " (absente sur ce vehicule)",
+    })
+    logWarn(string.format("Piece '%s' (slot='%s') absente sur ce vehicule, QTE annule.",
+      tgt.part.name, tgt.part.slot))
+    return
+  else
+    logInfo(string.format("Precheck OK - piece '%s' trouvee : %s", tgt.part.name, nodeInfo or ""))
   end
 
   -- Cas 5 : démarrage du QTE
@@ -782,7 +1059,7 @@ function M.onUpdate(dtReal, dtSim, dtRaw)
 end
 
 -- ── Hooks du système de carrière ──────────────────────────────────────────────
-function M.onCareerModulesActivated()
+local function doActivate(reason)
   state.active      = true
   state.qteRunning  = false
   state.cooldown    = 0.0
@@ -790,10 +1067,14 @@ function M.onCareerModulesActivated()
   state.wanted      = false
   state.targetTimer = 0.0
 
-  logInfo("===== Career Thief : activation mode carrière =====")
+  print("[CareerThief][INFO]  ===== Activation mode carriere (" .. tostring(reason) .. ") =====")
   discoverPartInventoryAPI()
   discoverPoliceAPI()
   sendUI({ type="moduleReady", apiHealthy=state.apiHealthy })
+end
+
+function M.onCareerModulesActivated()
+  doActivate("onCareerModulesActivated")
 end
 
 function M.onCareerDeactivated()
@@ -806,6 +1087,33 @@ end
 -- Alias pour compatibilité multi-versions
 M.onCareerActive          = M.onCareerModulesActivated
 M.onCareerModuleActivated = M.onCareerModulesActivated
+
+-- Détection "active" : au chargement (ou reload Lua), on vérifie si la carrière
+-- tourne déjà (le hook onCareerModulesActivated n'est pas réémis dans ce cas).
+local function detectCareerActive()
+  local ok, career = pcall(function() return career_career end)
+  if not ok or not career then return false end
+  if type(career.isActive) == "function" then
+    local ok2, active = pcall(career.isActive)
+    if ok2 and active then return true end
+  end
+  if career.tutorialStage ~= nil or career.saveSlot ~= nil then
+    return true
+  end
+  return false
+end
+
+function M.onExtensionLoaded()
+  if detectCareerActive() and not state.active then
+    doActivate("onExtensionLoaded + carriere deja active")
+  end
+end
+
+-- Commande console de dépannage : jouable depuis F10 via `career_modules_thief.forceActivate()`
+function M.forceActivate()
+  doActivate("forceActivate (console)")
+  return "Career Thief active."
+end
 
 -- ── Initialisation de l'extension ─────────────────────────────────────────────
 local function init()

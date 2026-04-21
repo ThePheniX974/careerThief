@@ -5,14 +5,14 @@
   "types": [
     "ui.apps.categories.gameplay"
   ],
-  "description": "HUD du mod Career Thief : réticule, QTE, état recherché.",
+  "description": "HUD du mod Career Thief : reticule, QTE, etat recherche.",
   "css": {
-    "top": "0",
-    "left": "0",
-    "width": "2px",
-    "height": "2px",
-    "min-width": "2px",
-    "min-height": "2px"
+    "top": "40px",
+    "left": "40px",
+    "width": "200px",
+    "height": "80px",
+    "min-width": "120px",
+    "min-height": "60px"
   },
   "author": "Rubix0270",
   "version": "1",
