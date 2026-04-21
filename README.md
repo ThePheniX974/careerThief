@@ -51,27 +51,6 @@ Approchez un véhicule, tentez de voler une pièce via un QTE, et fuyez la polic
 
 ---
 
-## Pièces volables (20 types)
-
-| Pièce                  | Valeur  |
-|------------------------|---------|
-| Pot catalytique        | 380 $   |
-| Capot moteur           | 230 $   |
-| Roue avant (x2)        | 185 $   |
-| Coffre / Hayon         | 200 $   |
-| Roue arrière (x2)      | 165 $   |
-| Pare-chocs avant       | 145 $   |
-| Batterie               | 130 $   |
-| Pare-chocs arrière     | 115 $   |
-| Aile avant (x2)        | 100 $   |
-| Phare (x2)             | 95 $    |
-| Silencieux             | 90 $    |
-| Bas de caisse (x2)     | 75 $    |
-| Rétroviseur (x2)       | 50 $    |
-| Antenne                | 35 $    |
-
----
-
 ## Équilibrage
 
 Modifiez `careerThief_config.json` pour ajuster la difficulté :
