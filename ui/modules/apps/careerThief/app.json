@@ -1,0 +1,23 @@
+{
+  "domElement": "<career-thief></career-thief>",
+  "appName": "careerThief",
+  "name": "Career Thief",
+  "types": [
+    "ui.apps.categories.gameplay"
+  ],
+  "description": "HUD du mod Career Thief : réticule, QTE, état recherché.",
+  "css": {
+    "top": "0",
+    "left": "0",
+    "width": "2px",
+    "height": "2px",
+    "min-width": "2px",
+    "min-height": "2px"
+  },
+  "author": "Rubix0270",
+  "version": "1",
+  "directive": "careerThief",
+  "category": "Gameplay",
+  "isAuxiliary": false,
+  "interactive": "no"
+}
