@@ -1,250 +1,76 @@
 <div ng-controller="CareerThiefCtrl" class="ct-root" ng-cloak>
-
-<style>
-/* ═══ Styles embarqués : BeamNG ne charge pas toujours app.css fiablement ═══ */
-
-.ct-root {
-  --ct-accent    : #e8820a;
-  --ct-success   : #2dcc6a;
-  --ct-danger    : #e82828;
-  --ct-warn      : #e8c20a;
-  --ct-bg-deep   : rgba(8, 8, 12, 0.88);
-  --ct-border    : rgba(255, 255, 255, 0.10);
-  --ct-text      : #dde0e8;
-  --ct-mono      : Consolas, 'Courier New', monospace;
-  --ct-display   : 'Segoe UI', Tahoma, sans-serif;
-  position   : fixed;
-  inset      : 0;
-  pointer-events : none;
-  z-index    : 2147483000;
-  font-family: var(--ct-display);
-  color      : var(--ct-text);
-}
-
-/* ── Prompt ───────────────────────────────────────────────────────── */
-.ct-prompt {
-  position: absolute; bottom: 22%; left: 50%;
-  transform: translateX(-50%);
-}
-.ct-prompt-inner {
-  display: flex; align-items: center; gap: 14px;
-  padding: 11px 20px;
-  background: var(--ct-bg-deep);
-  border: 1px solid rgba(232, 130, 10, 0.35);
-  border-radius: 3px;
-  box-shadow: 0 0 20px rgba(232, 130, 10, 0.12);
-}
-.ct-prompt-key {
-  background: var(--ct-accent); color: #000;
-  font-family: var(--ct-mono);
-  font-size: 15px; font-weight: 700;
-  width: 30px; height: 30px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 3px; flex-shrink: 0;
-  box-shadow: 0 0 12px rgba(232, 130, 10, 0.5);
-}
-.ct-prompt-info { display: flex; flex-direction: column; gap: 1px; }
-.ct-action-label {
-  font-size: 10px; font-weight: 600; letter-spacing: 0.2em;
-  color: var(--ct-accent); opacity: 0.85;
-}
-.ct-part-name {
-  font-size: 16px; font-weight: 700; color: var(--ct-text);
-  letter-spacing: 0.03em; line-height: 1;
-}
-.ct-part-value {
-  font-family: var(--ct-mono); font-size: 12px;
-  color: rgba(255,255,255,0.55);
-}
-.ct-prompt-bar {
-  height: 2px; background: rgba(255,255,255,0.08); overflow: hidden;
-}
-.ct-prompt-bar-fill {
-  height: 100%; background: var(--ct-accent); transition: width 0.1s linear;
-}
-
-/* ── QTE ──────────────────────────────────────────────────────────── */
-.ct-qte-wrap {
-  position: absolute; top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  width: 460px;
-  display: flex; flex-direction: column;
-  align-items: center; gap: 10px;
-  padding: 16px 20px;
-  background: var(--ct-bg-deep);
-  border: 1px solid rgba(232, 130, 10, 0.45);
-  border-radius: 4px;
-  box-shadow: 0 0 32px rgba(0,0,0,0.6), 0 0 16px rgba(232, 130, 10, 0.25);
-}
-.ct-qte-label {
-  font-size: 11px; font-weight: 600; letter-spacing: 0.25em;
-  color: var(--ct-accent); text-transform: uppercase;
-}
-.ct-qte-part {
-  font-size: 20px; font-weight: 900; letter-spacing: 0.06em;
-  color: #fff; text-transform: uppercase;
-  text-shadow: 0 0 20px rgba(232, 130, 10, 0.6); line-height: 1;
-}
-.ct-qte-bar-outer {
-  position: relative; width: 100%; height: 28px;
-  background: rgba(0,0,0,0.75);
-  border: 1px solid var(--ct-border);
-  border-radius: 14px; overflow: hidden;
-  box-shadow: 0 2px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04);
-}
-.ct-qte-time-bar {
-  position: absolute; bottom: 0; left: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--ct-accent), rgba(232,130,10,0.3));
-  transition: width 0.08s linear;
-}
-.ct-qte-zone {
-  position: absolute; top: 0; height: 100%;
-  background: rgba(45, 204, 106, 0.22);
-  border-left: 2px solid rgba(45, 204, 106, 0.75);
-  border-right: 2px solid rgba(45, 204, 106, 0.75);
-}
-.ct-qte-zone-tick {
-  position: absolute; top: 4px; bottom: 4px; width: 2px;
-  background: rgba(45, 204, 106, 0.9);
-}
-.ct-qte-zone-tick.left  { left: -2px; }
-.ct-qte-zone-tick.right { right: -2px; }
-.ct-qte-center-mark {
-  position: absolute; top: 6px; bottom: 6px;
-  left: calc(50% - 1px); width: 1px;
-  background: rgba(255,255,255,0.18);
-}
-.ct-qte-cursor {
-  position: absolute; top: 0; height: 100%; width: 5px;
-  transform: translateX(-50%);
-}
-.ct-qte-cursor-tip {
-  width: 5px; height: 100%; background: #fff;
-  border-radius: 3px;
-  box-shadow: 0 0 10px #fff, 0 0 20px rgba(255, 200, 100, 0.7);
-}
-.ct-qte-hint {
-  font-size: 11px; color: rgba(255,255,255,0.55); letter-spacing: 0.08em;
-}
-.ct-hint-key {
-  color: var(--ct-accent); font-weight: 700; font-family: var(--ct-mono);
-}
-
-/* ── Feedback ─────────────────────────────────────────────────────── */
-.ct-feedback {
-  position: absolute; top: 40%; left: 50%;
-  transform: translateX(-50%);
-  display: flex; align-items: center; gap: 14px;
-  padding: 14px 26px; border-radius: 4px; min-width: 200px;
-}
-.ct-success { background: rgba(16, 80, 38, 0.92); border: 1px solid rgba(45, 204, 106, 0.55); }
-.ct-fail    { background: rgba(80, 10, 10, 0.92); border: 1px solid rgba(232, 40, 40, 0.55); }
-.ct-warn    { background: rgba(60, 42, 0, 0.92);  border: 1px solid rgba(232, 194, 10, 0.4); }
-.ct-fb-icon { font-size: 24px; line-height: 1; flex-shrink: 0; }
-.ct-fb-body { display: flex; flex-direction: column; gap: 2px; }
-.ct-fb-msg  { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: 0.04em; white-space: nowrap; }
-.ct-fb-sub  { font-family: var(--ct-mono); font-size: 11px; color: rgba(255,255,255,0.55); margin-top: 1px; }
-
-/* ── Réticule ─────────────────────────────────────────────────────── */
-.ct-reticle {
-  position: absolute; top: 50%; left: 50%;
-  width: 28px; height: 28px;
-  transform: translate(-50%, -50%);
-  display: flex; align-items: center; justify-content: center;
-}
-.ct-reticle-ring {
-  position: absolute; inset: 0;
-  border: 1.5px solid rgba(255,255,255,0.45);
-  border-radius: 50%; box-sizing: border-box;
-}
-.ct-reticle-dot {
-  width: 3px; height: 3px; border-radius: 50%;
-  background: rgba(255,255,255,0.7);
-}
-.ct-reticle-idle  .ct-reticle-ring { border-color: rgba(255,255,255,0.25); }
-.ct-reticle-idle  .ct-reticle-dot  { background: rgba(255,255,255,0.45); }
-.ct-reticle-hover .ct-reticle-ring { border-color: var(--ct-accent); transform: scale(1.15); box-shadow: 0 0 10px rgba(232,130,10,0.6); }
-.ct-reticle-hover .ct-reticle-dot  { background: var(--ct-accent); transform: scale(1.3); }
-.ct-reticle-stolen .ct-reticle-ring { border-color: rgba(255,255,255,0.25); border-style: dashed; }
-.ct-reticle-stolen .ct-reticle-dot  { background: rgba(150,150,150,0.5); }
-.ct-reticle-blocked .ct-reticle-ring { border-color: var(--ct-warn); }
-.ct-reticle-blocked .ct-reticle-dot  { background: var(--ct-warn); }
-
-/* ── Wanted ───────────────────────────────────────────────────────── */
-.ct-wanted {
-  position: absolute; top: 22px; right: 22px;
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  background: rgba(100, 5, 5, 0.9);
-  border: 1px solid rgba(232, 40, 40, 0.5);
-  border-radius: 4px; padding: 10px 16px;
-  box-shadow: 0 0 24px rgba(232, 40, 40, 0.25);
-}
-.ct-wanted-stars { display: flex; gap: 4px; }
-.ct-star { color: #ffd700; font-size: 14px; }
-.ct-wanted-label {
-  font-size: 10px; font-weight: 700; letter-spacing: 0.22em;
-  color: rgba(255, 180, 180, 0.9);
-}
-.ct-wanted-timer {
-  font-family: var(--ct-mono); font-size: 22px; font-weight: 700;
-  color: #fff; letter-spacing: 0.04em; line-height: 1;
-}
-</style>
-
-  <!-- ── Réticule central : indique la pièce regardée ── -->
-  <div class="ct-reticle" ng-show="reticleVisible && !qteActive" ng-class="'ct-reticle-' + reticleState">
+  <div class="ct-reticle">
     <div class="ct-reticle-ring"></div>
     <div class="ct-reticle-dot"></div>
   </div>
 
-  <!-- ── Prompt d'interaction : pièce détectée ── -->
-  <div class="ct-prompt" ng-show="showPrompt && !qteActive && !feedbackVisible">
+  <div class="ct-prompt">
     <div class="ct-prompt-inner">
       <div class="ct-prompt-key">K</div>
       <div class="ct-prompt-info">
-        <span class="ct-action-label">VOLER</span>
-        <span class="ct-part-name">{{ targetPartName }}</span>
-        <span class="ct-part-value">valeur indic. {{ targetValue | number:0 }}</span>
+        <span class="ct-action-label">{{ modeLabel }}</span>
+        <span class="ct-part-name">{{ statusLabel }}</span>
+        <span class="ct-part-value">CD {{ cooldown | number:0 }}s</span>
       </div>
-    </div>
-    <div class="ct-prompt-bar" ng-show="onCooldown">
-      <div class="ct-prompt-bar-fill" ng-style="{ width: cooldownPct + '%' }"></div>
     </div>
   </div>
 
-  <!-- ── QTE : barre de timing ── -->
-  <div class="ct-qte-wrap" ng-show="qteActive">
-    <div class="ct-qte-label">SAISIR LA PIÈCE</div>
-    <div class="ct-qte-part">{{ qtePartName }}</div>
-
-    <div class="ct-qte-bar-outer">
-      <div class="ct-qte-zone"
-           ng-style="{
-             left  : ((0.5 - successZone/2) * 100) + '%',
-             width : (successZone * 100) + '%'
-           }">
-        <div class="ct-qte-zone-tick left"></div>
-        <div class="ct-qte-zone-tick right"></div>
-      </div>
-
-      <div class="ct-qte-center-mark"></div>
-
-      <div class="ct-qte-cursor"
-           ng-style="{ left: (qtePos * 100) + '%' }">
-        <div class="ct-qte-cursor-tip"></div>
-      </div>
-
-      <div class="ct-qte-time-bar"
-           ng-style="{ width: qteTimePct + '%' }"></div>
+  <div class="ct-blackmarket-panel">
+    <div class="ct-panel-title">BlackMarket</div>
+    <div class="ct-panel-row">
+      <span class="ct-k">Vehicule</span>
+      <span class="ct-v">{{ vehicleName }}</span>
     </div>
-
-    <div class="ct-qte-hint">
-      Appuyez sur <span class="ct-hint-key">K</span> pour saisir
+    <div class="ct-panel-row">
+      <span class="ct-k">Dropoff</span>
+      <span class="ct-v">{{ dropoffName }} ({{ distance | number:0 }}m)</span>
+    </div>
+    <div class="ct-panel-row">
+      <span class="ct-k">Integrite</span>
+      <span class="ct-v">{{ (integrity * 100) | number:0 }}%</span>
+    </div>
+    <div class="ct-panel-row">
+      <span class="ct-k">Vitesse</span>
+      <span class="ct-v">{{ speed | number:1 }} m/s</span>
     </div>
   </div>
 
-  <!-- ── Feedback : résultat / info ── -->
+  <div class="ct-marketplace-panel" ng-show="market.hasListing">
+    <div class="ct-panel-title">Annonce Marketplace</div>
+    <div class="ct-panel-row">
+      <span class="ct-k">Vehicule</span>
+      <span class="ct-v">{{ market.vehicleName }}</span>
+    </div>
+    <div class="ct-panel-row">
+      <span class="ct-k">Prix demande</span>
+      <span class="ct-v">{{ market.askingPrice | number:0 }}</span>
+    </div>
+    <div class="ct-panel-row">
+      <span class="ct-k">Prochaine offre</span>
+      <span class="ct-v">{{ market.offerIn | number:0 }}s</span>
+    </div>
+
+    <div class="ct-offer-box" ng-show="offer.active">
+      <div class="ct-offer-title">Offre recue</div>
+      <div class="ct-panel-row">
+        <span class="ct-k">Acheteur</span>
+        <span class="ct-v">{{ offer.buyer }}</span>
+      </div>
+      <div class="ct-panel-row">
+        <span class="ct-k">Montant</span>
+        <span class="ct-v">{{ offer.amount | number:0 }}</span>
+      </div>
+      <div class="ct-actions">
+        <button class="ct-btn ct-btn-success" ng-click="acceptOffer()">Accepter</button>
+        <button class="ct-btn ct-btn-warn" ng-click="rejectOffer()">Refuser</button>
+      </div>
+    </div>
+
+    <div class="ct-actions">
+      <button class="ct-btn ct-btn-danger" ng-click="cancelListing()">Retirer annonce</button>
+    </div>
+  </div>
+
   <div class="ct-feedback" ng-show="feedbackVisible" ng-class="feedbackClass">
     <div class="ct-fb-icon">{{ feedbackIcon }}</div>
     <div class="ct-fb-body">
@@ -253,7 +79,6 @@
     </div>
   </div>
 
-  <!-- ── Badge "RECHERCHÉ" ── -->
   <div class="ct-wanted" ng-show="wanted.active">
     <div class="ct-wanted-stars">
       <span class="ct-star ct-star-1">*</span>

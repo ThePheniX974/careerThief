@@ -1,47 +1,36 @@
 {
-  "_comment": "Configuration du mod Career Thief. Modifiez ces valeurs pour équilibrer la difficulté.",
-
+  "_comment": "Configuration Career Thief BlackMarket (vol de voitures).",
   "targeting": {
-    "maxDistance"      : 9.0,
-    "_maxDistance"     : "Distance maximale (mètres) pour le raycast depuis la caméra vers un véhicule cible",
-    "vehicleHitRadius" : 2.4,
-    "_vehicleHitRadius": "Rayon englobant approximatif d'un véhicule pour le test d'intersection du rayon caméra",
-    "maxCamAngleDeg"   : 18.0,
-    "_maxCamAngleDeg"  : "Demi-angle max (degrés) entre la direction caméra et le centre du véhicule. Plus grand = plus permissif."
+    "maxDistance": 11.0,
+    "vehicleHitRadius": 2.8,
+    "maxCamAngleDeg": 22.0
   },
-
-  "qte": {
-    "duration"        : 4.0,
-    "_duration"       : "Durée du QTE en secondes avant timeout automatique",
-    "cursorSpeed"     : 0.55,
-    "_cursorSpeed"    : "Oscillations par seconde du curseur. Plus haut = plus difficile. Recommandé : 0.4–1.0",
-    "successZone"     : 0.18,
-    "_successZone"    : "Largeur de la zone de succès (0–1). 0.18 = 18% de la barre. Plus petit = plus dur"
+  "theft": {
+    "cooldownAfterSteal": 10.0,
+    "wantedDuration": 150.0,
+    "maxTrackedVehicleDistance": 65.0
   },
-
-  "penalties": {
-    "cooldownAfterSteal" : 5.0,
-    "_cooldownAfterSteal": "Cooldown en secondes après un vol réussi",
-    "cooldownAfterFail"  : 3.0,
-    "_cooldownAfterFail" : "Cooldown en secondes après un vol raté",
-    "wantedDuration"     : 120.0,
-    "_wantedDuration"    : "Durée en secondes de l'état 'Recherché'"
+  "dropoff": {
+    "minIntegrity": 0.45,
+    "maxDropoffSpeed": 6.0,
+    "locations": [
+      {
+        "id": "docks",
+        "name": "Docks",
+        "pos": { "x": -413.9, "y": -115.2, "z": 5.4 },
+        "radius": 22.0
+      }
+    ]
   },
-
-  "inventory": {
-    "_note": "Les pièces volées vont exclusivement dans l'inventaire NATIF 'My Parts' de BeamNG via career_modules_partInventory. Aucun inventaire custom n'est tenu par le mod. Si l'API BeamNG n'est pas accessible (hors mode carrière ou version antérieure à 0.32), le vol est bloqué et un message d'erreur explicite est affiché dans le HUD + F10."
+  "marketplace": {
+    "priceMultiplierMin": 0.82,
+    "priceMultiplierMax": 1.18,
+    "offerMinDelay": 30.0,
+    "offerMaxDelay": 65.0,
+    "offerMinFactor": 0.68,
+    "offerMaxFactor": 1.08
   },
-
   "debug": {
-    "debugMode"  : false,
-    "_debugMode" : "Active les logs INFO dans la console GE-Lua (F10). Les WARN et ERROR restent toujours visibles."
-  },
-
-  "presets": {
-    "_note": "Profils de difficulté prédéfinis (à appliquer manuellement dans thief.lua)",
-    "facile"   : { "qteDuration": 5.0, "cursorSpeed": 0.38, "successZone": 0.28, "wantedDuration": 60.0  },
-    "normal"   : { "qteDuration": 4.0, "cursorSpeed": 0.55, "successZone": 0.18, "wantedDuration": 120.0 },
-    "difficile": { "qteDuration": 3.0, "cursorSpeed": 0.80, "successZone": 0.11, "wantedDuration": 180.0 },
-    "expert"   : { "qteDuration": 2.5, "cursorSpeed": 1.10, "successZone": 0.07, "wantedDuration": 240.0 }
+    "debugMode": false
   }
 }

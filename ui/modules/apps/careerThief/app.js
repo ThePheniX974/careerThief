@@ -19,154 +19,160 @@ angular.module('beamng.apps')
 
 .controller('CareerThiefCtrl', ['$scope', '$timeout', function ($scope, $timeout) {
 
-  $scope.showPrompt      = false;
-  $scope.qteActive       = false;
+  $scope.modeLabel = 'BlackMarket';
+  $scope.statusLabel = 'En attente';
+  $scope.vehicleName = '-';
+  $scope.dropoffName = 'Docks';
+  $scope.distance = 0;
+  $scope.integrity = 1;
+  $scope.speed = 0;
+  $scope.cooldown = 0;
+
   $scope.feedbackVisible = false;
-  $scope.onCooldown      = false;
-  $scope.cooldownPct     = 100;
-
-  $scope.reticleVisible = false;
-  $scope.reticleState   = 'idle';   // 'idle' | 'hover' | 'stolen' | 'blocked'
-
-  $scope.targetPartName  = '';
-  $scope.targetValue     = 0;
-
-  $scope.qtePartName = '';
-  $scope.qtePos      = 0;
-  $scope.qteTimePct  = 100;
-  $scope.successZone = 0.18;
-
-  $scope.feedbackClass = '';
-  $scope.feedbackIcon  = '';
-  $scope.feedbackMsg   = '';
-  $scope.feedbackSub   = '';
+  $scope.feedbackClass = 'ct-warn';
+  $scope.feedbackIcon = '!';
+  $scope.feedbackMsg = '';
+  $scope.feedbackSub = '';
 
   $scope.wanted = { active: false, timeStr: '0:00' };
 
-  var feedbackTimer = null;
-  var qteStartTime  = null;
-  var qteDuration   = 4000;
-  var cooldownMax   = 1;
-  var cooldownStart = 0;
+  $scope.market = {
+    hasListing: false,
+    vehicleName: '',
+    askingPrice: 0,
+    integrity: 0,
+    offerIn: 0
+  };
 
-  function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+  $scope.offer = {
+    active: false,
+    buyer: '',
+    amount: 0,
+    askingPrice: 0
+  };
+
+  var feedbackTimer = null;
+
+  function pad2(n) {
+    return n < 10 ? '0' + n : '' + n;
+  }
 
   function formatTime(secs) {
-    var s = Math.max(0, Math.floor(secs));
+    var s = Math.max(0, Math.floor(secs || 0));
     return Math.floor(s / 60) + ':' + pad2(s % 60);
   }
 
-  function cancelFeedback() {
+  function clearFeedbackTimer() {
     if (feedbackTimer) {
       $timeout.cancel(feedbackTimer);
       feedbackTimer = null;
     }
   }
 
-  function showFeedback(cls, icon, msg, sub, durationSec) {
-    cancelFeedback();
-    $scope.feedbackClass   = cls;
-    $scope.feedbackIcon    = icon;
-    $scope.feedbackMsg     = msg;
-    $scope.feedbackSub     = sub || '';
+  function showFeedback(level, msg, sub, durationSec) {
+    clearFeedbackTimer();
+    $scope.feedbackClass = level === 'success' ? 'ct-success' : (level === 'fail' ? 'ct-fail' : 'ct-warn');
+    $scope.feedbackIcon = level === 'success' ? '+' : (level === 'fail' ? 'x' : '!');
+    $scope.feedbackMsg = msg || '';
+    $scope.feedbackSub = sub || '';
     $scope.feedbackVisible = true;
-    $scope.qteActive       = false;
-
     feedbackTimer = $timeout(function () {
       $scope.feedbackVisible = false;
-    }, (durationSec || 3) * 1000);
+    }, (durationSec || 2.8) * 1000);
   }
 
-  // ── Gestionnaire central des événements GELUA ────────────────────────────────
+  function callLua(fnName) {
+    if (window.bngApi && typeof window.bngApi.engineLua === 'function') {
+      window.bngApi.engineLua("if career_modules_thief then career_modules_thief." + fnName + "() end");
+    }
+  }
+
+  $scope.acceptOffer = function () { callLua('acceptBestOffer'); };
+  $scope.rejectOffer = function () { callLua('rejectOffer'); };
+  $scope.cancelListing = function () { callLua('cancelListing'); };
+
   $scope.$on('careerThief_update', function (evt, d) {
     if (!d) return;
 
     switch (d.type) {
-
-      case 'targetFound':
-        $scope.showPrompt     = true;
-        $scope.targetPartName = d.partName;
-        $scope.targetValue    = d.value;
-        $scope.onCooldown     = d.onCooldown;
-        $scope.reticleVisible = true;
-        $scope.reticleState   = d.alreadyStolen ? 'stolen' : (d.onCooldown ? 'blocked' : 'hover');
-        if (d.onCooldown && d.cooldown > 0) {
-          cooldownMax   = d.cooldown;
-          cooldownStart = Date.now();
-          $scope.cooldownPct = 100;
-        }
-        if (d.wanted) {
-          $scope.wanted.active  = true;
-          $scope.wanted.timeStr = formatTime(d.wantedTime);
-        }
+      case 'moduleReady':
+        $scope.statusLabel = 'Pret pour le vol';
+        $scope.feedbackVisible = false;
+        $scope.offer.active = false;
+        $scope.market.hasListing = false;
         break;
 
       case 'idle':
-        $scope.showPrompt     = false;
-        $scope.reticleVisible = true;
-        $scope.reticleState   = 'idle';
+        $scope.statusLabel = 'Cherche une voiture cible';
+        $scope.cooldown = d.cooldown || 0;
         if (d.wanted) {
-          $scope.wanted.active  = true;
+          $scope.wanted.active = true;
           $scope.wanted.timeStr = formatTime(d.wantedTime);
         }
         break;
 
-      case 'noTarget':
-        $scope.showPrompt = false;
-        showFeedback('ct-warn', 'x', 'Aucune pièce visée', 'Regardez une partie du véhicule', 1.5);
+      case 'theftStarted':
+        $scope.vehicleName = d.vehicleName || '-';
+        $scope.dropoffName = d.dropoffName || 'Docks';
+        $scope.statusLabel = 'Livraison vers ' + $scope.dropoffName;
+        showFeedback('success', 'Voiture volee', 'Direction: ' + $scope.dropoffName, 2.5);
         break;
 
-      case 'alreadyStolen':
-        showFeedback('ct-warn', 'o', 'Déjà volée : ' + (d.partName || ''), 'Visez une autre zone', 2.0);
-        break;
-
-      case 'qteStart':
-        cancelFeedback();
-        $scope.showPrompt      = false;
-        $scope.reticleVisible  = false;
-        $scope.feedbackVisible = false;
-        $scope.qteActive       = true;
-        $scope.qtePartName     = d.partName;
-        $scope.qtePos          = 0;
-        $scope.qteTimePct      = 100;
-        $scope.successZone     = d.successZone || 0.18;
-        qteDuration            = (d.duration || 4) * 1000;
-        qteStartTime           = Date.now();
-        break;
-
-      case 'qteTick':
-        if ($scope.qteActive) {
-          $scope.qtePos     = d.pos;
-          var elapsed       = Date.now() - (qteStartTime || Date.now());
-          $scope.qteTimePct = Math.max(0, 100 - (elapsed / qteDuration) * 100);
+      case 'missionUpdate':
+        $scope.statusLabel = d.status || 'mission';
+        $scope.vehicleName = d.vehicleName || '-';
+        $scope.dropoffName = d.dropoffName || 'Docks';
+        $scope.distance = d.distanceToDropoff || 0;
+        $scope.integrity = d.integrity || 0;
+        $scope.speed = d.speed || 0;
+        if (d.wanted) {
+          $scope.wanted.active = true;
+          $scope.wanted.timeStr = formatTime(d.wantedTime);
         }
         break;
 
-      case 'qteSuccess':
-        // Vol réussi : discret, pas de police, pas de statut recherché.
-        showFeedback('ct-success', '+', d.partName + ' volée !', 'Envoyée dans My Parts', 3.5);
+      case 'listingCreated':
+        $scope.market.hasListing = true;
+        $scope.market.vehicleName = d.vehicleName || '';
+        $scope.market.askingPrice = d.askingPrice || 0;
+        $scope.market.integrity = d.integrity || 0;
+        $scope.statusLabel = 'Annonce BlackMarket creee';
+        showFeedback('success', 'Annonce en ligne', 'Prix demande: ' + (d.askingPrice || 0), 3.2);
         break;
 
-      case 'qteFail':
-        if (d.reason === 'inventory_failed') {
-          // Bug technique (API) : pas d'alerte police, juste un message d'info.
-          showFeedback('ct-fail', '!', 'Transfert échoué', 'Bug inventaire BeamNG (voir F10)', 4);
+      case 'marketState':
+        $scope.market.hasListing = !!d.hasListing;
+        if (d.hasListing) {
+          $scope.market.vehicleName = d.vehicleName || '';
+          $scope.market.askingPrice = d.askingPrice || 0;
+          $scope.market.integrity = d.integrity || 0;
+          $scope.market.offerIn = d.offerIn || 0;
         } else {
-          // Vrai échec de timing : police alertée.
-          $scope.wanted.active  = true;
-          $scope.wanted.timeStr = formatTime(120);
-          showFeedback('ct-fail', 'x', 'Raté !', 'Police alertée', 3);
+          $scope.market.offerIn = 0;
         }
         break;
 
-      case 'qteTimeout':
-        $scope.wanted.active  = true;
-        $scope.wanted.timeStr = formatTime(120);
-        showFeedback('ct-fail', '#', 'Trop lent !', 'Police alertée', 3);
+      case 'offerUpdate':
+        $scope.offer.active = true;
+        $scope.offer.buyer = d.buyer || 'Client';
+        $scope.offer.amount = d.amount || 0;
+        $scope.offer.askingPrice = d.askingPrice || 0;
+        showFeedback('warn', 'Nouvelle offre', (d.buyer || 'Client') + ' propose ' + (d.amount || 0), 3.5);
+        break;
+
+      case 'saleComplete':
+        $scope.offer.active = false;
+        $scope.market.hasListing = false;
+        $scope.statusLabel = 'Vente terminee';
+        showFeedback('success', 'Vente conclue', (d.buyer || 'Client') + ' a paye ' + (d.amount || 0), 3.8);
+        break;
+
+      case 'feedback':
+        showFeedback(d.level || 'warn', d.message || '', d.sub || '', 2.8);
         break;
 
       case 'wantedStart':
-        $scope.wanted.active  = true;
+        $scope.wanted.active = true;
         $scope.wanted.timeStr = formatTime(d.duration);
         break;
 
@@ -174,43 +180,17 @@ angular.module('beamng.apps')
         $scope.wanted.active = false;
         break;
 
-      case 'onCooldown':
-        showFeedback('ct-warn', '.', 'Attendez ' + Math.ceil(d.remaining) + ' s', '', 1.8);
-        break;
-
-      case 'inventoryUnavailable':
-        // Cas critique : l'API BeamNG My Parts n'est pas accessible.
-        var reason = d.reason === 'no_api'
-          ? "API career_modules_partInventory absente"
-          : "Aucune signature d'ajout n'a fonctionné";
-        showFeedback('ct-fail', '!', 'Inventaire BeamNG indisponible', reason + ' — voir console F10', 5);
-        break;
-
-      case 'moduleReady':
-        $scope.showPrompt      = false;
-        $scope.qteActive       = false;
-        $scope.feedbackVisible = false;
-        $scope.wanted.active   = false;
-        $scope.reticleVisible  = true;
-        $scope.reticleState    = 'idle';
-        if (d.apiHealthy === false) {
-          showFeedback('ct-warn', '!', 'Attention', 'Inventaire BeamNG non détecté — voir F10', 6);
-        }
-        break;
-
       case 'hide':
-        cancelFeedback();
-        $scope.showPrompt      = false;
-        $scope.qteActive       = false;
+        clearFeedbackTimer();
         $scope.feedbackVisible = false;
-        $scope.wanted.active   = false;
-        $scope.reticleVisible  = false;
+        $scope.wanted.active = false;
+        $scope.offer.active = false;
+        $scope.market.hasListing = false;
         break;
     }
   });
 
   $scope.$on('$destroy', function () {
-    cancelFeedback();
+    clearFeedbackTimer();
   });
-
 }]);

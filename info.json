@@ -1,7 +1,7 @@
 {
-  "title": "Career Thief",
+  "title": "Career Thief BlackMarket",
   "version": "1.0.0",
   "author": "Anonymous",
-  "description": "Ajout du métier de voleur en mode carrière. Approchez votre véhicule d'un autre, appuyez sur K pour lancer un QTE et tenter de voler une pièce. La police est alertée immédiatement à chaque tentative !",
+  "description": "Vol de voitures en mode carrière: ciblez une voiture, livrez-la aux docks BlackMarket, créez une annonce marketplace et vendez-la via des offres dynamiques.",
   "dependencies": []
 }

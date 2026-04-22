@@ -1,7 +1,7 @@
 {
   "careerThief_steal": {
-    "title"      : "Career Thief – Voler une pièce",
-    "desc"       : "Tentative de vol d'une pièce sur le véhicule ciblé. Premier appui = lance le QTE. Second appui = arrête le curseur.",
+    "title"      : "Career Thief – Voler un véhicule",
+    "desc"       : "Vole le véhicule visé et lance la mission de livraison BlackMarket.",
     "order"      : 501,
     "cat"        : "gameplay",
     "actionMap"  : "Normal",

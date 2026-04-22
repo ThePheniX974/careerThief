@@ -1,11 +1,11 @@
 {
   "domElement": "<career-thief></career-thief>",
   "appName": "careerThief",
-  "name": "Career Thief",
+  "name": "Career Thief BlackMarket",
   "types": [
     "ui.apps.categories.gameplay"
   ],
-  "description": "HUD du mod Career Thief : reticule, QTE, etat recherche.",
+  "description": "HUD BlackMarket: vol de voitures, livraison docks, annonce marketplace et offres.",
   "css": {
     "top": "40px",
     "left": "40px",
