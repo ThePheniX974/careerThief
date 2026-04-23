@@ -7,6 +7,7 @@
   },
   "theft": {
     "cooldownAfterSteal": 10.0,
+    "cooldownAfterFailOrCancel": 300.0,
     "wantedDuration": 150.0,
     "maxTrackedVehicleDistance": 65.0
   },
@@ -37,14 +38,14 @@
       "dropoffComplete": 40,
       "saleComplete": 65
     },
-    "levelThresholds": [100, 240, 420, 640, 900, 1220, 1600, 2050, 2575, 3200],
+    "levelThresholds": [130, 260, 520, 1040, 2080, 4160, 8320, 16640, 33280, 66560],
     "levelBonuses": {
       "0": { "priceFinalBonus": 0.0, "theftSuccessBonus": 0.0, "instantStealChance": 0.0, "policeAvoidOnFail": 0.0 },
       "1": { "priceFinalBonus": 0.10, "theftSuccessBonus": 0.0, "instantStealChance": 0.0, "policeAvoidOnFail": 0.0 },
       "2": { "priceFinalBonus": 0.0, "theftSuccessBonus": 0.05, "instantStealChance": 0.0, "policeAvoidOnFail": 0.0 },
       "3": { "priceFinalBonus": 0.0, "theftSuccessBonus": 0.0, "instantStealChance": 0.02, "policeAvoidOnFail": 0.0 },
       "4": { "priceFinalBonus": 0.0, "theftSuccessBonus": 0.0, "instantStealChance": 0.02, "policeAvoidOnFail": 0.0 },
-      "5": { "priceFinalBonus": 0.05, "theftSuccessBonus": 0.0, "instantStealChance": 0.0, "policeAvoidOnFail": 0.0 },
+      "5": { "priceFinalBonus": 0.05, "theftSuccessBonus": 0.02, "instantStealChance": 0.01, "policeAvoidOnFail": 0.10 },
       "6": { "priceFinalBonus": 0.0, "theftSuccessBonus": 0.03, "instantStealChance": 0.02, "policeAvoidOnFail": 0.0 },
       "7": { "priceFinalBonus": 0.0, "theftSuccessBonus": 0.0, "instantStealChance": 0.02, "policeAvoidOnFail": 0.0 },
       "8": { "priceFinalBonus": 0.06, "theftSuccessBonus": 0.0, "instantStealChance": 0.0, "policeAvoidOnFail": 0.0 },

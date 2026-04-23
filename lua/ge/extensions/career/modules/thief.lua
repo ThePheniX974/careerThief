@@ -8,6 +8,7 @@ local cfg = {
   },
   theft = {
     cooldownAfterSteal = 10.0,
+    cooldownAfterFailOrCancel = 300.0,
     wantedDuration = 150.0,
     maxTrackedVehicleDistance = 65.0,
     baseSuccessChance = 0.55
@@ -761,6 +762,16 @@ local function clearGameplayState()
   state.progression.bonuses = recomputeCumulativeBonuses(0)
 end
 
+local function applyFailOrCancelCooldown(reasonLabel)
+  state.cooldown = math.max(state.cooldown, cfg.theft.cooldownAfterFailOrCancel)
+  sendUI({
+    type = "feedback",
+    level = "warn",
+    message = "Cooldown applique",
+    sub = tostring(math.ceil(cfg.theft.cooldownAfterFailOrCancel)) .. "s (" .. tostring(reasonLabel or "echec") .. ")"
+  })
+end
+
 function M.onTheftKeyPressed()
   if not state.active then return end
   if state.mission and state.mission.status == "enRouteToDropoff" then
@@ -819,6 +830,7 @@ function M.onTheftKeyPressed()
   local avoidRoll = math.random()
   local avoidPolice = avoidRoll <= clamp01(bonuses.policeAvoidOnFail)
   if avoidPolice then
+    applyFailOrCancelCooldown("echec discret")
     sendUI({
       type = "feedback",
       level = "warn",
@@ -826,6 +838,7 @@ function M.onTheftKeyPressed()
       sub = "La police n'a pas ete alertee"
     })
   else
+    applyFailOrCancelCooldown("echec avec police")
     local failUnits = alertPolice("fail")
     sendUI({
       type = "feedback",
@@ -883,6 +896,7 @@ function M.cancelListing()
   state.market.listing = nil
   state.market.lastOffer = nil
   state.mission = nil
+  applyFailOrCancelCooldown("annulation")
   sendUI({ type = "feedback", level = "warn", message = "Annonce retiree", sub = "Vehicule retire du BlackMarket" })
 end
 
@@ -941,6 +955,7 @@ local function applyConfigOverrides(raw)
   end
   if raw.theft then
     cfg.theft.cooldownAfterSteal = raw.theft.cooldownAfterSteal or cfg.theft.cooldownAfterSteal
+    cfg.theft.cooldownAfterFailOrCancel = raw.theft.cooldownAfterFailOrCancel or cfg.theft.cooldownAfterFailOrCancel
     cfg.theft.wantedDuration = raw.theft.wantedDuration or cfg.theft.wantedDuration
     cfg.theft.maxTrackedVehicleDistance = raw.theft.maxTrackedVehicleDistance or cfg.theft.maxTrackedVehicleDistance
     cfg.theft.baseSuccessChance = raw.theft.baseSuccessChance or cfg.theft.baseSuccessChance
