@@ -33,7 +33,22 @@ Le fichier `careerThief_config.json` pilote tout l’équilibrage:
 - `theft`: cooldown, durée recherché, distance max de suivi
 - `dropoff`: points de livraison (docks), rayon, vitesse max, intégrité mini
 - `marketplace`: marge prix et fréquence des offres
+- `progression`: niveaux 0->10, XP, seuils progressifs et bonus cumulés
 - `debug.debugMode`: active les logs `[CareerThief][INFO]`
+
+## Systeme de niveaux BlackMarket
+
+- Niveau initial: `0`
+- Niveau max: `10`
+- Progression: XP croissante (seuils progressifs)
+- Bonus: cumulatifs
+
+Effets principaux:
+
+- Bonus prix final de vente
+- Bonus de chance de vol
+- Chance de vol instantane
+- Chance d’eviter l’appel police en cas d’echec (jusqu’a `+25%` au niveau 10)
 
 ## Intégration police
 

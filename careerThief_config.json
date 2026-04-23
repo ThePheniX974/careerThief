@@ -30,6 +30,28 @@
     "offerMinFactor": 0.68,
     "offerMaxFactor": 1.08
   },
+  "progression": {
+    "maxLevel": 10,
+    "xpRewards": {
+      "theftSuccess": 25,
+      "dropoffComplete": 40,
+      "saleComplete": 65
+    },
+    "levelThresholds": [100, 240, 420, 640, 900, 1220, 1600, 2050, 2575, 3200],
+    "levelBonuses": {
+      "0": { "priceFinalBonus": 0.0, "theftSuccessBonus": 0.0, "instantStealChance": 0.0, "policeAvoidOnFail": 0.0 },
+      "1": { "priceFinalBonus": 0.10, "theftSuccessBonus": 0.0, "instantStealChance": 0.0, "policeAvoidOnFail": 0.0 },
+      "2": { "priceFinalBonus": 0.0, "theftSuccessBonus": 0.05, "instantStealChance": 0.0, "policeAvoidOnFail": 0.0 },
+      "3": { "priceFinalBonus": 0.0, "theftSuccessBonus": 0.0, "instantStealChance": 0.02, "policeAvoidOnFail": 0.0 },
+      "4": { "priceFinalBonus": 0.0, "theftSuccessBonus": 0.0, "instantStealChance": 0.02, "policeAvoidOnFail": 0.0 },
+      "5": { "priceFinalBonus": 0.05, "theftSuccessBonus": 0.0, "instantStealChance": 0.0, "policeAvoidOnFail": 0.0 },
+      "6": { "priceFinalBonus": 0.0, "theftSuccessBonus": 0.03, "instantStealChance": 0.02, "policeAvoidOnFail": 0.0 },
+      "7": { "priceFinalBonus": 0.0, "theftSuccessBonus": 0.0, "instantStealChance": 0.02, "policeAvoidOnFail": 0.0 },
+      "8": { "priceFinalBonus": 0.06, "theftSuccessBonus": 0.0, "instantStealChance": 0.0, "policeAvoidOnFail": 0.0 },
+      "9": { "priceFinalBonus": 0.0, "theftSuccessBonus": 0.04, "instantStealChance": 0.02, "policeAvoidOnFail": 0.0 },
+      "10": { "priceFinalBonus": 0.0, "theftSuccessBonus": 0.0, "instantStealChance": 0.02, "policeAvoidOnFail": 0.25 }
+    }
+  },
   "debug": {
     "debugMode": false
   }

@@ -35,6 +35,38 @@
     </div>
   </div>
 
+  <div class="ct-level-panel">
+    <div class="ct-panel-title">Niveau BlackMarket</div>
+    <div class="ct-panel-row">
+      <span class="ct-k">Niveau</span>
+      <span class="ct-v">{{ progression.level }} / {{ progression.maxLevel }}</span>
+    </div>
+    <div class="ct-panel-row">
+      <span class="ct-k">XP</span>
+      <span class="ct-v">{{ progression.xp }} / {{ progression.nextLevelXp }}</span>
+    </div>
+    <div class="ct-xp-bar">
+      <div class="ct-xp-fill" ng-style="{ width: progression.xpPct + '%' }"></div>
+    </div>
+    <div class="ct-panel-title ct-panel-title-sub">Bonus cumules</div>
+    <div class="ct-panel-row">
+      <span class="ct-k">Prix final</span>
+      <span class="ct-v">+{{ (progression.bonuses.priceFinalBonus * 100) | number:0 }}%</span>
+    </div>
+    <div class="ct-panel-row">
+      <span class="ct-k">Chance vol</span>
+      <span class="ct-v">+{{ (progression.bonuses.theftSuccessBonus * 100) | number:0 }}%</span>
+    </div>
+    <div class="ct-panel-row">
+      <span class="ct-k">Vol instantane</span>
+      <span class="ct-v">+{{ (progression.bonuses.instantStealChance * 100) | number:0 }}%</span>
+    </div>
+    <div class="ct-panel-row">
+      <span class="ct-k">Eviter police</span>
+      <span class="ct-v">+{{ (progression.bonuses.policeAvoidOnFail * 100) | number:0 }}%</span>
+    </div>
+  </div>
+
   <div class="ct-marketplace-panel" ng-show="market.hasListing">
     <div class="ct-panel-title">Annonce Marketplace</div>
     <div class="ct-panel-row">

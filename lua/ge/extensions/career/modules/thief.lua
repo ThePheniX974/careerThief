@@ -9,7 +9,8 @@ local cfg = {
   theft = {
     cooldownAfterSteal = 10.0,
     wantedDuration = 150.0,
-    maxTrackedVehicleDistance = 65.0
+    maxTrackedVehicleDistance = 65.0,
+    baseSuccessChance = 0.55
   },
   dropoff = {
     minIntegrity = 0.45,
@@ -30,6 +31,28 @@ local cfg = {
     offerMaxDelay = 65.0,
     offerMinFactor = 0.68,
     offerMaxFactor = 1.08
+  },
+  progression = {
+    maxLevel = 10,
+    xpRewards = {
+      theftSuccess = 25,
+      dropoffComplete = 40,
+      saleComplete = 65
+    },
+    levelThresholds = { 100, 240, 420, 640, 900, 1220, 1600, 2050, 2575, 3200 },
+    levelBonuses = {
+      ["0"] = { priceFinalBonus = 0.0, theftSuccessBonus = 0.0, instantStealChance = 0.0, policeAvoidOnFail = 0.0 },
+      ["1"] = { priceFinalBonus = 0.10, theftSuccessBonus = 0.0, instantStealChance = 0.0, policeAvoidOnFail = 0.0 },
+      ["2"] = { priceFinalBonus = 0.0, theftSuccessBonus = 0.05, instantStealChance = 0.0, policeAvoidOnFail = 0.0 },
+      ["3"] = { priceFinalBonus = 0.0, theftSuccessBonus = 0.0, instantStealChance = 0.02, policeAvoidOnFail = 0.0 },
+      ["4"] = { priceFinalBonus = 0.0, theftSuccessBonus = 0.0, instantStealChance = 0.02, policeAvoidOnFail = 0.0 },
+      ["5"] = { priceFinalBonus = 0.05, theftSuccessBonus = 0.0, instantStealChance = 0.0, policeAvoidOnFail = 0.0 },
+      ["6"] = { priceFinalBonus = 0.0, theftSuccessBonus = 0.03, instantStealChance = 0.02, policeAvoidOnFail = 0.0 },
+      ["7"] = { priceFinalBonus = 0.0, theftSuccessBonus = 0.0, instantStealChance = 0.02, policeAvoidOnFail = 0.0 },
+      ["8"] = { priceFinalBonus = 0.06, theftSuccessBonus = 0.0, instantStealChance = 0.0, policeAvoidOnFail = 0.0 },
+      ["9"] = { priceFinalBonus = 0.0, theftSuccessBonus = 0.04, instantStealChance = 0.02, policeAvoidOnFail = 0.0 },
+      ["10"] = { priceFinalBonus = 0.0, theftSuccessBonus = 0.0, instantStealChance = 0.02, policeAvoidOnFail = 0.25 }
+    }
   },
   debug = {
     debugMode = false
@@ -63,6 +86,17 @@ local state = {
   market = {
     listing = nil,
     lastOffer = nil
+  },
+  progression = {
+    level = 0,
+    xp = 0,
+    nextLevelXp = 100,
+    bonuses = {
+      priceFinalBonus = 0.0,
+      theftSuccessBonus = 0.0,
+      instantStealChance = 0.0,
+      policeAvoidOnFail = 0.0
+    }
   }
 }
 
@@ -411,6 +445,83 @@ local function randomRange(minValue, maxValue)
   return minValue + (maxValue - minValue) * math.random()
 end
 
+local function getBonusForLevel(level)
+  local key = tostring(level)
+  return cfg.progression.levelBonuses[key] or { priceFinalBonus = 0.0, theftSuccessBonus = 0.0, instantStealChance = 0.0, policeAvoidOnFail = 0.0 }
+end
+
+local function recomputeCumulativeBonuses(level)
+  local b = { priceFinalBonus = 0.0, theftSuccessBonus = 0.0, instantStealChance = 0.0, policeAvoidOnFail = 0.0 }
+  local maxLevel = math.min(level, cfg.progression.maxLevel)
+  for i = 0, maxLevel do
+    local lb = getBonusForLevel(i)
+    b.priceFinalBonus = b.priceFinalBonus + (lb.priceFinalBonus or 0.0)
+    b.theftSuccessBonus = b.theftSuccessBonus + (lb.theftSuccessBonus or 0.0)
+    b.instantStealChance = b.instantStealChance + (lb.instantStealChance or 0.0)
+    b.policeAvoidOnFail = b.policeAvoidOnFail + (lb.policeAvoidOnFail or 0.0)
+  end
+  return b
+end
+
+local function clamp01(v)
+  return math.max(0.0, math.min(1.0, v or 0.0))
+end
+
+local function getNextLevelXp(level)
+  local idx = level + 1
+  if idx <= cfg.progression.maxLevel then
+    return cfg.progression.levelThresholds[idx] or cfg.progression.levelThresholds[#cfg.progression.levelThresholds]
+  end
+  return cfg.progression.levelThresholds[#cfg.progression.levelThresholds]
+end
+
+local function recomputeProgression()
+  local level = 0
+  for idx, threshold in ipairs(cfg.progression.levelThresholds) do
+    if state.progression.xp >= threshold then
+      level = idx
+    else
+      break
+    end
+  end
+  level = math.min(level, cfg.progression.maxLevel)
+  local levelChanged = level ~= state.progression.level
+  state.progression.level = level
+  state.progression.nextLevelXp = getNextLevelXp(level)
+  state.progression.bonuses = recomputeCumulativeBonuses(level)
+  if levelChanged then
+    sendUI({
+      type = "feedback",
+      level = "success",
+      message = "Niveau BlackMarket " .. tostring(level),
+      sub = "Nouveaux avantages debloques"
+    })
+  end
+end
+
+local function sendProgressionUI()
+  sendUI({
+    type = "progressionUpdate",
+    level = state.progression.level,
+    maxLevel = cfg.progression.maxLevel,
+    xp = state.progression.xp,
+    nextLevelXp = state.progression.nextLevelXp,
+    bonuses = state.progression.bonuses
+  })
+end
+
+local function addXp(amount, reason)
+  local gain = math.max(0, math.floor(amount or 0))
+  if gain <= 0 then return end
+  state.progression.xp = state.progression.xp + gain
+  recomputeProgression()
+  sendUI({
+    type = "xpGain",
+    amount = gain,
+    reason = reason or "action"
+  })
+end
+
 local function createListingFromMission(mission)
   local askFactor = randomRange(cfg.marketplace.priceMultiplierMin, cfg.marketplace.priceMultiplierMax)
   local askPrice = math.floor(mission.estimatedValue * askFactor)
@@ -495,6 +606,7 @@ local function startTheftMission(targetVehId)
   }
   state.cooldown = cfg.theft.cooldownAfterSteal
   alertPolice()
+  addXp(cfg.progression.xpRewards.theftSuccess, "vol_reussi")
   sendUI({
     type = "theftStarted",
     vehicleName = state.mission.vehicleName,
@@ -540,6 +652,7 @@ local function tryFinalizeDropoff()
   state.mission.status = "listed"
   state.market.listing = createListingFromMission(state.mission)
   state.market.lastOffer = nil
+  addXp(cfg.progression.xpRewards.dropoffComplete, "dropoff_valide")
   sendUI({
     type = "listingCreated",
     vehicleName = state.market.listing.vehicleName,
@@ -618,6 +731,10 @@ local function clearGameplayState()
   state.mission = nil
   state.market.listing = nil
   state.market.lastOffer = nil
+  state.progression.level = 0
+  state.progression.xp = 0
+  state.progression.nextLevelXp = getNextLevelXp(0)
+  state.progression.bonuses = recomputeCumulativeBonuses(0)
 end
 
 function M.onTheftKeyPressed()
@@ -653,7 +770,46 @@ function M.onTheftKeyPressed()
     sendUI({ type = "feedback", level = "warn", message = "Vol impossible", sub = reason or "" })
     return
   end
-  startTheftMission(target.vehId)
+
+  local bonuses = state.progression.bonuses
+  local instantChance = clamp01(bonuses.instantStealChance)
+  local totalSuccessChance = clamp01(cfg.theft.baseSuccessChance + (bonuses.theftSuccessBonus or 0.0))
+  local instantRoll = math.random()
+  if instantRoll <= instantChance then
+    sendUI({
+      type = "feedback",
+      level = "success",
+      message = "Vol instantane",
+      sub = "Bonus niveau applique"
+    })
+    startTheftMission(target.vehId)
+    return
+  end
+
+  local successRoll = math.random()
+  if successRoll <= totalSuccessChance then
+    startTheftMission(target.vehId)
+    return
+  end
+
+  local avoidRoll = math.random()
+  local avoidPolice = avoidRoll <= clamp01(bonuses.policeAvoidOnFail)
+  if avoidPolice then
+    sendUI({
+      type = "feedback",
+      level = "warn",
+      message = "Vol rate, discret",
+      sub = "La police n'a pas ete alertee"
+    })
+  else
+    alertPolice()
+    sendUI({
+      type = "feedback",
+      level = "fail",
+      message = "Vol rate",
+      sub = "Police alertee"
+    })
+  end
 end
 
 function M.acceptBestOffer()
@@ -664,7 +820,8 @@ function M.acceptBestOffer()
     return
   end
 
-  local payout = offer.amount
+  local priceBonus = 1.0 + (state.progression.bonuses.priceFinalBonus or 0.0)
+  local payout = math.floor(offer.amount * priceBonus)
   if career_modules_playerAttributes and career_modules_playerAttributes.addAttribute then
     pcall(career_modules_playerAttributes.addAttribute, "money", payout)
   elseif career_modules_inventory and career_modules_inventory.addMoney then
@@ -679,6 +836,7 @@ function M.acceptBestOffer()
     amount = payout,
     buyer = offer.buyer
   })
+  addXp(cfg.progression.xpRewards.saleComplete, "vente_finalisee")
   state.market.lastOffer = nil
   state.market.listing = nil
   state.mission = nil
@@ -746,6 +904,7 @@ function M.onUpdate(dtReal, dtSim, dtRaw)
         askingPrice = state.market.lastOffer.askingPrice
       })
     end
+    sendProgressionUI()
   end
 end
 
@@ -760,6 +919,7 @@ local function applyConfigOverrides(raw)
     cfg.theft.cooldownAfterSteal = raw.theft.cooldownAfterSteal or cfg.theft.cooldownAfterSteal
     cfg.theft.wantedDuration = raw.theft.wantedDuration or cfg.theft.wantedDuration
     cfg.theft.maxTrackedVehicleDistance = raw.theft.maxTrackedVehicleDistance or cfg.theft.maxTrackedVehicleDistance
+    cfg.theft.baseSuccessChance = raw.theft.baseSuccessChance or cfg.theft.baseSuccessChance
   end
   if raw.dropoff then
     cfg.dropoff.minIntegrity = raw.dropoff.minIntegrity or cfg.dropoff.minIntegrity
@@ -775,6 +935,20 @@ local function applyConfigOverrides(raw)
     cfg.marketplace.offerMaxDelay = raw.marketplace.offerMaxDelay or cfg.marketplace.offerMaxDelay
     cfg.marketplace.offerMinFactor = raw.marketplace.offerMinFactor or cfg.marketplace.offerMinFactor
     cfg.marketplace.offerMaxFactor = raw.marketplace.offerMaxFactor or cfg.marketplace.offerMaxFactor
+  end
+  if raw.progression then
+    cfg.progression.maxLevel = raw.progression.maxLevel or cfg.progression.maxLevel
+    if raw.progression.xpRewards then
+      cfg.progression.xpRewards.theftSuccess = raw.progression.xpRewards.theftSuccess or cfg.progression.xpRewards.theftSuccess
+      cfg.progression.xpRewards.dropoffComplete = raw.progression.xpRewards.dropoffComplete or cfg.progression.xpRewards.dropoffComplete
+      cfg.progression.xpRewards.saleComplete = raw.progression.xpRewards.saleComplete or cfg.progression.xpRewards.saleComplete
+    end
+    if type(raw.progression.levelThresholds) == "table" and #raw.progression.levelThresholds > 0 then
+      cfg.progression.levelThresholds = raw.progression.levelThresholds
+    end
+    if type(raw.progression.levelBonuses) == "table" then
+      cfg.progression.levelBonuses = raw.progression.levelBonuses
+    end
   end
   if raw.debug then
     cfg.debug.debugMode = raw.debug.debugMode and true or false
@@ -798,6 +972,7 @@ local function doActivate(reason)
   print("[CareerThief][INFO]  ===== Activation mode carriere (" .. tostring(reason) .. ") =====")
   discoverPoliceAPI()
   sendUI({ type = "moduleReady", mode = "blackmarket" })
+  sendProgressionUI()
 end
 
 function M.onCareerModulesActivated()
@@ -841,6 +1016,7 @@ end
 local function init()
   math.randomseed(os.time())
   loadConfig()
+  recomputeProgression()
   logInfo("Extension Career Thief BlackMarket chargee.")
 end
 

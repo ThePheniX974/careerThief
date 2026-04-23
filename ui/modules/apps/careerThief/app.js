@@ -51,6 +51,20 @@ angular.module('beamng.apps')
     askingPrice: 0
   };
 
+  $scope.progression = {
+    level: 0,
+    maxLevel: 10,
+    xp: 0,
+    nextLevelXp: 100,
+    xpPct: 0,
+    bonuses: {
+      priceFinalBonus: 0,
+      theftSuccessBonus: 0,
+      instantStealChance: 0,
+      policeAvoidOnFail: 0
+    }
+  };
+
   var feedbackTimer = null;
 
   function pad2(n) {
@@ -81,6 +95,21 @@ angular.module('beamng.apps')
     }, (durationSec || 2.8) * 1000);
   }
 
+  function updateProgressionUi(data) {
+    $scope.progression.level = data.level || 0;
+    $scope.progression.maxLevel = data.maxLevel || 10;
+    $scope.progression.xp = data.xp || 0;
+    $scope.progression.nextLevelXp = data.nextLevelXp || 100;
+    $scope.progression.bonuses = data.bonuses || $scope.progression.bonuses;
+    var prevLevelXp = 0;
+    if ($scope.progression.level > 0 && $scope.progression.nextLevelXp > 0) {
+      prevLevelXp = 0;
+    }
+    var denom = Math.max(1, ($scope.progression.nextLevelXp - prevLevelXp));
+    var current = Math.max(0, ($scope.progression.xp - prevLevelXp));
+    $scope.progression.xpPct = Math.max(0, Math.min(100, (current / denom) * 100));
+  }
+
   function callLua(fnName) {
     if (window.bngApi && typeof window.bngApi.engineLua === 'function') {
       window.bngApi.engineLua("if career_modules_thief then career_modules_thief." + fnName + "() end");
@@ -100,6 +129,13 @@ angular.module('beamng.apps')
         $scope.feedbackVisible = false;
         $scope.offer.active = false;
         $scope.market.hasListing = false;
+        break;
+      case 'progressionUpdate':
+        updateProgressionUi(d);
+        break;
+
+      case 'xpGain':
+        showFeedback('success', 'XP +' + (d.amount || 0), d.reason || 'progression', 1.8);
         break;
 
       case 'idle':
