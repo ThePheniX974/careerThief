@@ -27,6 +27,7 @@ angular.module('beamng.apps')
   $scope.integrity = 1;
   $scope.speed = 0;
   $scope.cooldown = 0;
+  $scope.hasMission = false;
 
   $scope.feedbackVisible = false;
   $scope.feedbackClass = 'ct-warn';
@@ -49,6 +50,15 @@ angular.module('beamng.apps')
     buyer: '',
     amount: 0,
     askingPrice: 0
+  };
+
+  $scope.qte = {
+    active: false,
+    vehicleName: '',
+    targetMin: 0,
+    targetMax: 0,
+    cursorPos: 0,
+    timeLeft: 0
   };
 
   $scope.progression = {
@@ -86,7 +96,7 @@ angular.module('beamng.apps')
   function showFeedback(level, msg, sub, durationSec) {
     clearFeedbackTimer();
     $scope.feedbackClass = level === 'success' ? 'ct-success' : (level === 'fail' ? 'ct-fail' : 'ct-warn');
-    $scope.feedbackIcon = level === 'success' ? '+' : (level === 'fail' ? 'x' : '!');
+    $scope.feedbackIcon = level === 'success' ? '✓' : (level === 'fail' ? '✕' : '!');
     $scope.feedbackMsg = msg || '';
     $scope.feedbackSub = sub || '';
     $scope.feedbackVisible = true;
@@ -125,10 +135,12 @@ angular.module('beamng.apps')
 
     switch (d.type) {
       case 'moduleReady':
-        $scope.statusLabel = 'Pret pour le vol';
+        $scope.statusLabel = 'Prêt pour le vol';
         $scope.feedbackVisible = false;
         $scope.offer.active = false;
         $scope.market.hasListing = false;
+        $scope.hasMission = false;
+        $scope.vehicleName = '-';
         break;
       case 'progressionUpdate':
         updateProgressionUi(d);
@@ -141,6 +153,7 @@ angular.module('beamng.apps')
       case 'idle':
         $scope.statusLabel = 'Cherche une voiture cible';
         $scope.cooldown = d.cooldown || 0;
+        $scope.hasMission = false;
         if (d.wanted) {
           $scope.wanted.active = true;
           $scope.wanted.timeStr = formatTime(d.wantedTime);
@@ -151,16 +164,18 @@ angular.module('beamng.apps')
         $scope.vehicleName = d.vehicleName || '-';
         $scope.dropoffName = d.dropoffName || 'Docks';
         $scope.statusLabel = 'Livraison vers ' + $scope.dropoffName;
-        showFeedback('success', 'Voiture volee', 'Direction: ' + $scope.dropoffName, 2.5);
+        $scope.hasMission = true;
+        showFeedback('success', 'Voiture volée', 'Direction : ' + $scope.dropoffName, 2.5);
         break;
 
       case 'missionUpdate':
-        $scope.statusLabel = d.status || 'mission';
+        $scope.statusLabel = d.status || 'Mission en cours';
         $scope.vehicleName = d.vehicleName || '-';
         $scope.dropoffName = d.dropoffName || 'Docks';
         $scope.distance = d.distanceToDropoff || 0;
         $scope.integrity = d.integrity || 0;
         $scope.speed = d.speed || 0;
+        $scope.hasMission = true;
         if (d.wanted) {
           $scope.wanted.active = true;
           $scope.wanted.timeStr = formatTime(d.wantedTime);
@@ -199,12 +214,38 @@ angular.module('beamng.apps')
       case 'saleComplete':
         $scope.offer.active = false;
         $scope.market.hasListing = false;
-        $scope.statusLabel = 'Vente terminee';
-        showFeedback('success', 'Vente conclue', (d.buyer || 'Client') + ' a paye ' + (d.amount || 0), 3.8);
+        $scope.statusLabel = 'Vente terminée';
+        $scope.hasMission = false;
+        showFeedback('success', 'Vente conclue', (d.buyer || 'Client') + ' a payé ' + (d.amount || 0), 3.8);
         break;
 
       case 'feedback':
         showFeedback(d.level || 'warn', d.message || '', d.sub || '', 2.8);
+        break;
+
+      case 'qteStart':
+        console.log('[CareerThief UI] qteStart received', d);
+        $scope.qte.active      = true;
+        $scope.qte.vehicleName = d.vehicleName || 'Vehicule';
+        $scope.qte.targetMin   = d.targetMin || 0;
+        $scope.qte.targetMax   = d.targetMax || 0;
+        $scope.qte.cursorPos   = 0;
+        $scope.qte.timeLeft    = d.duration || 0;
+        if (!$scope.$$phase) { $scope.$applyAsync(); }
+        break;
+
+      case 'qteUpdate':
+        if ($scope.qte.active) {
+          $scope.qte.cursorPos = d.cursorPos || 0;
+          $scope.qte.timeLeft  = d.timeLeft  || 0;
+          if (!$scope.$$phase) { $scope.$applyAsync(); }
+        }
+        break;
+
+      case 'qteEnd':
+        console.log('[CareerThief UI] qteEnd received, success=', d.success);
+        $scope.qte.active = false;
+        if (!$scope.$$phase) { $scope.$applyAsync(); }
         break;
 
       case 'wantedStart':
@@ -222,6 +263,8 @@ angular.module('beamng.apps')
         $scope.wanted.active = false;
         $scope.offer.active = false;
         $scope.market.hasListing = false;
+        $scope.hasMission = false;
+        $scope.qte.active = false;
         break;
     }
   });

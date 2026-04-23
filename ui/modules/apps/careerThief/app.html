@@ -1,108 +1,778 @@
 <div ng-controller="CareerThiefCtrl" class="ct-root" ng-cloak>
+<style>
+/* ──────────────────────────────────────────────────────────────────────────
+   Career Thief / BlackMarket HUD
+   Le CSS est embarqué ici car BeamNG ne charge pas toujours app.css de
+   manière fiable après un reload d'extension.
+   ─────────────────────────────────────────────────────────────────────── */
+
+.ct-root {
+  --ct-accent:    #ff8a1f;
+  --ct-accent-2:  #ffb057;
+  --ct-success:   #32d296;
+  --ct-danger:    #ff4d4d;
+  --ct-warn:      #ffc93c;
+  --ct-bg:        rgba(12, 14, 18, 0.88);
+  --ct-bg-soft:   rgba(18, 20, 26, 0.72);
+  --ct-border:    rgba(255, 255, 255, 0.08);
+  --ct-border-a:  rgba(255, 138, 31, 0.45);
+  --ct-text:      #e9ecf4;
+  --ct-text-dim:  rgba(233, 236, 244, 0.55);
+  --ct-text-key:  rgba(233, 236, 244, 0.75);
+  --ct-mono:      'JetBrains Mono', Consolas, 'Courier New', monospace;
+  --ct-display:   'Segoe UI', 'Inter', Tahoma, sans-serif;
+  --ct-radius:    8px;
+  --ct-shadow:    0 6px 22px rgba(0, 0, 0, 0.45);
+
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483000;
+  font-family: var(--ct-display);
+  color: var(--ct-text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+/* ── Panneau générique ─────────────────────────────────────────────────── */
+.ct-card {
+  position: absolute;
+  right: 18px;
+  width: 300px;
+  background: var(--ct-bg);
+  border: 1px solid var(--ct-border);
+  border-radius: var(--ct-radius);
+  box-shadow: var(--ct-shadow);
+  backdrop-filter: blur(6px);
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.ct-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, rgba(255, 138, 31, 0.14), transparent);
+  border-bottom: 1px solid var(--ct-border);
+}
+
+.ct-card-head .ct-accent-bar {
+  width: 3px;
+  height: 14px;
+  background: var(--ct-accent);
+  border-radius: 2px;
+}
+
+.ct-card-head .ct-card-title {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ct-accent);
+}
+
+.ct-card-body {
+  padding: 10px 12px 12px;
+}
+
+/* ── Lignes clé/valeur ──────────────────────────────────────────────────── */
+.ct-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.ct-row + .ct-row {
+  border-top: 1px dashed rgba(255, 255, 255, 0.04);
+}
+
+.ct-k {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ct-text-key);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.ct-k .ct-ico {
+  width: 14px;
+  text-align: center;
+  color: var(--ct-accent-2);
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.ct-v {
+  font-family: var(--ct-mono);
+  color: #ffffff;
+  font-size: 12.5px;
+  text-align: right;
+  font-weight: 600;
+}
+
+.ct-v-strong { color: var(--ct-accent-2); }
+
+/* ── Positions des panneaux ─────────────────────────────────────────────── */
+.ct-level-card    { top: 18px; }
+.ct-mission-card  { top: 310px; }
+.ct-market-card   { top: 580px; }
+
+/* ── Bloc Niveau (grand chiffre + barre XP) ─────────────────────────────── */
+.ct-level-hero {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.ct-level-num {
+  font-family: var(--ct-mono);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 0 12px rgba(255, 138, 31, 0.35);
+}
+
+.ct-level-max {
+  font-family: var(--ct-mono);
+  font-size: 14px;
+  color: var(--ct-text-dim);
+  padding-bottom: 3px;
+}
+
+.ct-level-badge {
+  margin-left: auto;
+  padding: 3px 8px;
+  background: rgba(255, 138, 31, 0.14);
+  border: 1px solid var(--ct-border-a);
+  border-radius: 999px;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--ct-accent);
+  align-self: center;
+}
+
+/* ── Barres de progression ──────────────────────────────────────────────── */
+.ct-bar {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.ct-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.25s ease-out;
+}
+
+.ct-bar-xp .ct-bar-fill {
+  background: linear-gradient(90deg, #ff8a1f, #ffd35c);
+  box-shadow: 0 0 8px rgba(255, 138, 31, 0.4);
+}
+
+.ct-bar-health .ct-bar-fill {
+  background: linear-gradient(90deg, #32d296, #b7e36f);
+}
+
+.ct-bar-health.is-low .ct-bar-fill {
+  background: linear-gradient(90deg, #ff4d4d, #ffc93c);
+}
+
+.ct-bar-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--ct-mono);
+  font-size: 10.5px;
+  color: var(--ct-text-dim);
+  margin-top: 4px;
+  letter-spacing: 0.05em;
+}
+
+.ct-bar-label .ct-bar-val {
+  color: var(--ct-text);
+  font-weight: 600;
+}
+
+/* ── Sous-titre dans un panneau ────────────────────────────────────────── */
+.ct-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 10px;
+  color: var(--ct-text-dim);
+  margin: 12px 0 6px;
+}
+
+.ct-sub::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--ct-border);
+}
+
+/* ── Bonus list ────────────────────────────────────────────────────────── */
+.ct-bonus {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  row-gap: 4px;
+  column-gap: 8px;
+  font-size: 11.5px;
+}
+
+.ct-bonus .ct-b-k {
+  color: var(--ct-text-key);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ct-bonus .ct-b-v {
+  font-family: var(--ct-mono);
+  color: var(--ct-success);
+  font-weight: 600;
+}
+
+.ct-bonus .ct-b-v.zero { color: var(--ct-text-dim); }
+
+/* ── Prompt central ────────────────────────────────────────────────────── */
+.ct-prompt {
+  position: absolute;
+  bottom: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px 10px 10px;
+  background: var(--ct-bg);
+  border: 1px solid var(--ct-border-a);
+  border-radius: var(--ct-radius);
+  box-shadow: var(--ct-shadow), 0 0 0 1px rgba(255, 138, 31, 0.06) inset;
+  backdrop-filter: blur(6px);
+  min-width: 240px;
+}
+
+.ct-prompt-key {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: linear-gradient(180deg, var(--ct-accent), #d46d10);
+  color: #1b1306;
+  font-family: var(--ct-mono);
+  font-size: 16px;
+  font-weight: 800;
+  box-shadow:
+    0 2px 0 #7a3f07 inset,
+    0 -1px 0 rgba(255, 255, 255, 0.2) inset,
+    0 3px 8px rgba(255, 138, 31, 0.35);
+}
+
+.ct-prompt-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ct-prompt-mode {
+  font-size: 9.5px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--ct-accent);
+  font-weight: 700;
+}
+
+.ct-prompt-status {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+}
+
+.ct-prompt-cd {
+  font-family: var(--ct-mono);
+  font-size: 10.5px;
+  color: var(--ct-text-dim);
+  letter-spacing: 0.05em;
+}
+
+.ct-prompt-cd.is-cooling { color: var(--ct-warn); }
+
+/* ── Feedback toast ────────────────────────────────────────────────────── */
+.ct-feedback {
+  position: absolute;
+  top: 14%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  border-radius: var(--ct-radius);
+  min-width: 260px;
+  box-shadow: var(--ct-shadow);
+  backdrop-filter: blur(6px);
+  animation: ctFbIn 0.22s ease-out;
+}
+
+@keyframes ctFbIn {
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.ct-feedback.ct-success {
+  background: rgba(14, 56, 36, 0.92);
+  border: 1px solid rgba(50, 210, 150, 0.55);
+}
+
+.ct-feedback.ct-fail {
+  background: rgba(78, 18, 18, 0.92);
+  border: 1px solid rgba(255, 77, 77, 0.55);
+}
+
+.ct-feedback.ct-warn {
+  background: rgba(72, 54, 8, 0.92);
+  border: 1px solid rgba(255, 201, 60, 0.55);
+}
+
+.ct-fb-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.ct-feedback.ct-success .ct-fb-icon { color: var(--ct-success); }
+.ct-feedback.ct-fail    .ct-fb-icon { color: var(--ct-danger);  }
+.ct-feedback.ct-warn    .ct-fb-icon { color: var(--ct-warn);    }
+
+.ct-fb-body { display: flex; flex-direction: column; gap: 2px; }
+.ct-fb-msg  { font-size: 14px; font-weight: 700; }
+.ct-fb-sub  { font-size: 11px; color: rgba(255, 255, 255, 0.7); font-family: var(--ct-mono); }
+
+/* ── Badge wanted (police) ─────────────────────────────────────────────── */
+.ct-wanted {
+  position: absolute;
+  left: 18px;
+  top: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 18px;
+  border-radius: var(--ct-radius);
+  background: rgba(80, 14, 14, 0.92);
+  border: 1px solid rgba(255, 77, 77, 0.6);
+  box-shadow: var(--ct-shadow), 0 0 20px rgba(255, 77, 77, 0.25);
+  backdrop-filter: blur(6px);
+  animation: ctWantedPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes ctWantedPulse {
+  0%, 100% { box-shadow: var(--ct-shadow), 0 0 18px rgba(255, 77, 77, 0.25); }
+  50%      { box-shadow: var(--ct-shadow), 0 0 28px rgba(255, 77, 77, 0.55); }
+}
+
+.ct-wanted-stars { display: flex; gap: 3px; }
+.ct-star { color: #ffd45a; font-size: 14px; line-height: 1; }
+.ct-wanted-label { font-size: 10px; letter-spacing: 0.28em; color: #ffd4d4; font-weight: 700; }
+.ct-wanted-timer { font-size: 22px; font-family: var(--ct-mono); font-weight: 700; letter-spacing: 0.04em; }
+
+/* ── Boutons marketplace ───────────────────────────────────────────────── */
+.ct-offer-box {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px dashed rgba(255, 201, 60, 0.45);
+  border-radius: 6px;
+  background: rgba(255, 201, 60, 0.06);
+}
+
+.ct-offer-title {
+  color: var(--ct-warn);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.ct-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ct-btn {
+  flex: 1;
+  border: 0;
+  border-radius: 5px;
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 0.08s ease-out, filter 0.15s ease-out;
+}
+
+.ct-btn:hover { filter: brightness(1.12); }
+.ct-btn:active { transform: translateY(1px); }
+
+.ct-btn-success { background: var(--ct-success); color: #0b2a1c; }
+.ct-btn-warn    { background: var(--ct-warn);    color: #2c2202; }
+.ct-btn-danger  { background: var(--ct-danger);  color: #fff; }
+
+/* ── QTE (barre + zone cible + curseur) ────────────────────────────────── */
+.ct-qte {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 420px;
+  padding: 14px 16px 12px;
+  background: var(--ct-bg);
+  border: 1px solid var(--ct-border-a);
+  border-radius: var(--ct-radius);
+  box-shadow: var(--ct-shadow), 0 0 28px rgba(255, 138, 31, 0.18);
+  backdrop-filter: blur(6px);
+  animation: ctFbIn 0.18s ease-out;
+}
+
+.ct-qte-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.ct-qte-title {
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 10.5px;
+  color: var(--ct-accent);
+  font-weight: 700;
+}
+
+.ct-qte-timer {
+  font-family: var(--ct-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255, 138, 31, 0.18);
+  border: 1px solid var(--ct-border-a);
+}
+
+.ct-qte-timer.is-urgent {
+  color: #fff;
+  background: rgba(255, 77, 77, 0.25);
+  border-color: rgba(255, 77, 77, 0.6);
+  animation: ctQteUrgent 0.4s ease-in-out infinite alternate;
+}
+
+@keyframes ctQteUrgent {
+  from { transform: scale(1); }
+  to   { transform: scale(1.08); }
+}
+
+.ct-qte-vehicle {
+  font-size: 12.5px;
+  color: var(--ct-text);
+  font-weight: 600;
+  margin-bottom: 10px;
+  font-family: var(--ct-mono);
+}
+
+.ct-qte-bar {
+  position: relative;
+  height: 26px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(0,0,0,0.25));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.ct-qte-zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(50, 210, 150, 0.45) 0%,
+    rgba(50, 210, 150, 0.18) 100%
+  );
+  border-left:  2px solid #32d296;
+  border-right: 2px solid #32d296;
+  box-shadow: 0 0 12px rgba(50, 210, 150, 0.35) inset;
+}
+
+.ct-qte-cursor {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 4px;
+  margin-left: -2px;
+  background: #fff;
+  border-radius: 2px;
+  box-shadow:
+    0 0 10px rgba(255, 255, 255, 0.95),
+    0 0 18px rgba(255, 138, 31, 0.6);
+  transition: left 0.03s linear;
+}
+
+.ct-qte-hint {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ct-text-dim);
+}
+
+.ct-qte-hint .ct-qte-key {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 6px;
+  margin: 0 3px;
+  background: var(--ct-accent);
+  color: #1b1306;
+  border-radius: 3px;
+  font-family: var(--ct-mono);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+/* ── Réticule discret ──────────────────────────────────────────────────── */
+.ct-reticle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ct-reticle-ring {
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid rgba(255, 138, 31, 0.85);
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(255, 138, 31, 0.45);
+}
+
+.ct-reticle-dot {
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+}
+</style>
+
+  <!-- ── Réticule ─────────────────────────────────────────────────────── -->
   <div class="ct-reticle">
     <div class="ct-reticle-ring"></div>
     <div class="ct-reticle-dot"></div>
   </div>
 
+  <!-- ── Prompt principal (bas-centre) ────────────────────────────────── -->
   <div class="ct-prompt">
-    <div class="ct-prompt-inner">
-      <div class="ct-prompt-key">K</div>
-      <div class="ct-prompt-info">
-        <span class="ct-action-label">{{ modeLabel }}</span>
-        <span class="ct-part-name">{{ statusLabel }}</span>
-        <span class="ct-part-value">CD {{ cooldown | number:0 }}s</span>
+    <div class="ct-prompt-key">K</div>
+    <div class="ct-prompt-info">
+      <div class="ct-prompt-mode">{{ modeLabel }}</div>
+      <div class="ct-prompt-status">{{ statusLabel }}</div>
+      <div class="ct-prompt-cd" ng-class="{ 'is-cooling': cooldown > 0 }">
+        <span ng-if="cooldown > 0">Cooldown {{ cooldown | number:0 }}s</span>
+        <span ng-if="cooldown <= 0">Prêt</span>
       </div>
     </div>
   </div>
 
-  <div class="ct-blackmarket-panel">
-    <div class="ct-panel-title">BlackMarket</div>
-    <div class="ct-panel-row">
-      <span class="ct-k">Vehicule</span>
-      <span class="ct-v">{{ vehicleName }}</span>
+  <!-- ── Panneau NIVEAU BlackMarket (haut-droite) ─────────────────────── -->
+  <div class="ct-card ct-level-card">
+    <div class="ct-card-head">
+      <div class="ct-accent-bar"></div>
+      <div class="ct-card-title">BlackMarket · Niveau</div>
     </div>
-    <div class="ct-panel-row">
-      <span class="ct-k">Dropoff</span>
-      <span class="ct-v">{{ dropoffName }} ({{ distance | number:0 }}m)</span>
-    </div>
-    <div class="ct-panel-row">
-      <span class="ct-k">Integrite</span>
-      <span class="ct-v">{{ (integrity * 100) | number:0 }}%</span>
-    </div>
-    <div class="ct-panel-row">
-      <span class="ct-k">Vitesse</span>
-      <span class="ct-v">{{ speed | number:1 }} m/s</span>
+    <div class="ct-card-body">
+
+      <div class="ct-level-hero">
+        <span class="ct-level-num">{{ progression.level }}</span>
+        <span class="ct-level-max">/ {{ progression.maxLevel }}</span>
+        <span class="ct-level-badge">Rang</span>
+      </div>
+
+      <div class="ct-bar ct-bar-xp">
+        <div class="ct-bar-fill" ng-style="{ width: progression.xpPct + '%' }"></div>
+      </div>
+      <div class="ct-bar-label">
+        <span>XP</span>
+        <span class="ct-bar-val">{{ progression.xp }} / {{ progression.nextLevelXp }}</span>
+      </div>
+
+      <div class="ct-sub">Bonus cumulés</div>
+      <div class="ct-bonus">
+        <div class="ct-b-k"><span class="ct-ico">▲</span>Prix final</div>
+        <div class="ct-b-v" ng-class="{ zero: progression.bonuses.priceFinalBonus <= 0 }">
+          +{{ (progression.bonuses.priceFinalBonus * 100) | number:0 }}%
+        </div>
+
+        <div class="ct-b-k"><span class="ct-ico">◆</span>Chance vol</div>
+        <div class="ct-b-v" ng-class="{ zero: progression.bonuses.theftSuccessBonus <= 0 }">
+          +{{ (progression.bonuses.theftSuccessBonus * 100) | number:0 }}%
+        </div>
+
+        <div class="ct-b-k"><span class="ct-ico">⚡</span>Vol instantané</div>
+        <div class="ct-b-v" ng-class="{ zero: progression.bonuses.instantStealChance <= 0 }">
+          +{{ (progression.bonuses.instantStealChance * 100) | number:0 }}%
+        </div>
+
+        <div class="ct-b-k"><span class="ct-ico">●</span>Éviter police</div>
+        <div class="ct-b-v" ng-class="{ zero: progression.bonuses.policeAvoidOnFail <= 0 }">
+          +{{ (progression.bonuses.policeAvoidOnFail * 100) | number:0 }}%
+        </div>
+      </div>
+
     </div>
   </div>
 
-  <div class="ct-level-panel">
-    <div class="ct-panel-title">Niveau BlackMarket</div>
-    <div class="ct-panel-row">
-      <span class="ct-k">Niveau</span>
-      <span class="ct-v">{{ progression.level }} / {{ progression.maxLevel }}</span>
+  <!-- ── Panneau MISSION ACTIVE (haut-droite, masqué si pas de mission) ── -->
+  <div class="ct-card ct-mission-card" ng-show="hasMission">
+    <div class="ct-card-head">
+      <div class="ct-accent-bar"></div>
+      <div class="ct-card-title">Mission en cours</div>
     </div>
-    <div class="ct-panel-row">
-      <span class="ct-k">XP</span>
-      <span class="ct-v">{{ progression.xp }} / {{ progression.nextLevelXp }}</span>
-    </div>
-    <div class="ct-xp-bar">
-      <div class="ct-xp-fill" ng-style="{ width: progression.xpPct + '%' }"></div>
-    </div>
-    <div class="ct-panel-title ct-panel-title-sub">Bonus cumules</div>
-    <div class="ct-panel-row">
-      <span class="ct-k">Prix final</span>
-      <span class="ct-v">+{{ (progression.bonuses.priceFinalBonus * 100) | number:0 }}%</span>
-    </div>
-    <div class="ct-panel-row">
-      <span class="ct-k">Chance vol</span>
-      <span class="ct-v">+{{ (progression.bonuses.theftSuccessBonus * 100) | number:0 }}%</span>
-    </div>
-    <div class="ct-panel-row">
-      <span class="ct-k">Vol instantane</span>
-      <span class="ct-v">+{{ (progression.bonuses.instantStealChance * 100) | number:0 }}%</span>
-    </div>
-    <div class="ct-panel-row">
-      <span class="ct-k">Eviter police</span>
-      <span class="ct-v">+{{ (progression.bonuses.policeAvoidOnFail * 100) | number:0 }}%</span>
+    <div class="ct-card-body">
+
+      <div class="ct-row">
+        <div class="ct-k"><span class="ct-ico">▶</span>Véhicule</div>
+        <div class="ct-v ct-v-strong">{{ vehicleName }}</div>
+      </div>
+      <div class="ct-row">
+        <div class="ct-k"><span class="ct-ico">◉</span>Dépôt</div>
+        <div class="ct-v">{{ dropoffName }}</div>
+      </div>
+      <div class="ct-row">
+        <div class="ct-k"><span class="ct-ico">→</span>Distance</div>
+        <div class="ct-v">{{ distance | number:0 }} m</div>
+      </div>
+      <div class="ct-row">
+        <div class="ct-k"><span class="ct-ico">◈</span>Vitesse</div>
+        <div class="ct-v">{{ (speed * 3.6) | number:0 }} km/h</div>
+      </div>
+
+      <div class="ct-sub">Intégrité</div>
+      <div class="ct-bar ct-bar-health" ng-class="{ 'is-low': integrity < 0.5 }">
+        <div class="ct-bar-fill" ng-style="{ width: (integrity * 100) + '%' }"></div>
+      </div>
+      <div class="ct-bar-label">
+        <span>État véhicule</span>
+        <span class="ct-bar-val">{{ (integrity * 100) | number:0 }}%</span>
+      </div>
+
     </div>
   </div>
 
-  <div class="ct-marketplace-panel" ng-show="market.hasListing">
-    <div class="ct-panel-title">Annonce Marketplace</div>
-    <div class="ct-panel-row">
-      <span class="ct-k">Vehicule</span>
-      <span class="ct-v">{{ market.vehicleName }}</span>
+  <!-- ── Panneau MARKETPLACE (haut-droite, masqué sauf si annonce) ────── -->
+  <div class="ct-card ct-market-card" ng-show="market.hasListing">
+    <div class="ct-card-head">
+      <div class="ct-accent-bar"></div>
+      <div class="ct-card-title">Annonce Marketplace</div>
     </div>
-    <div class="ct-panel-row">
-      <span class="ct-k">Prix demande</span>
-      <span class="ct-v">{{ market.askingPrice | number:0 }}</span>
-    </div>
-    <div class="ct-panel-row">
-      <span class="ct-k">Prochaine offre</span>
-      <span class="ct-v">{{ market.offerIn | number:0 }}s</span>
-    </div>
+    <div class="ct-card-body">
 
-    <div class="ct-offer-box" ng-show="offer.active">
-      <div class="ct-offer-title">Offre recue</div>
-      <div class="ct-panel-row">
-        <span class="ct-k">Acheteur</span>
-        <span class="ct-v">{{ offer.buyer }}</span>
+      <div class="ct-row">
+        <div class="ct-k"><span class="ct-ico">▶</span>Véhicule</div>
+        <div class="ct-v ct-v-strong">{{ market.vehicleName }}</div>
       </div>
-      <div class="ct-panel-row">
-        <span class="ct-k">Montant</span>
-        <span class="ct-v">{{ offer.amount | number:0 }}</span>
+      <div class="ct-row">
+        <div class="ct-k"><span class="ct-ico">$</span>Prix demandé</div>
+        <div class="ct-v">{{ market.askingPrice | number:0 }}</div>
       </div>
+      <div class="ct-row">
+        <div class="ct-k"><span class="ct-ico">⌛</span>Prochaine offre</div>
+        <div class="ct-v">{{ market.offerIn | number:0 }}s</div>
+      </div>
+
+      <div class="ct-offer-box" ng-show="offer.active">
+        <div class="ct-offer-title">Offre reçue</div>
+        <div class="ct-row">
+          <div class="ct-k"><span class="ct-ico">●</span>Acheteur</div>
+          <div class="ct-v ct-v-strong">{{ offer.buyer }}</div>
+        </div>
+        <div class="ct-row">
+          <div class="ct-k"><span class="ct-ico">$</span>Montant</div>
+          <div class="ct-v">{{ offer.amount | number:0 }}</div>
+        </div>
+        <div class="ct-actions">
+          <button class="ct-btn ct-btn-success" ng-click="acceptOffer()">Accepter</button>
+          <button class="ct-btn ct-btn-warn"    ng-click="rejectOffer()">Refuser</button>
+        </div>
+      </div>
+
       <div class="ct-actions">
-        <button class="ct-btn ct-btn-success" ng-click="acceptOffer()">Accepter</button>
-        <button class="ct-btn ct-btn-warn" ng-click="rejectOffer()">Refuser</button>
+        <button class="ct-btn ct-btn-danger" ng-click="cancelListing()">Retirer l'annonce</button>
       </div>
-    </div>
 
-    <div class="ct-actions">
-      <button class="ct-btn ct-btn-danger" ng-click="cancelListing()">Retirer annonce</button>
     </div>
   </div>
 
+  <!-- ── QTE (mini-jeu centré) ────────────────────────────────────────── -->
+  <div class="ct-qte" ng-show="qte.active">
+    <div class="ct-qte-head">
+      <div class="ct-qte-title">Vol en cours</div>
+      <div class="ct-qte-timer" ng-class="{ 'is-urgent': qte.timeLeft < 1.5 }">
+        {{ qte.timeLeft | number:1 }}s
+      </div>
+    </div>
+
+    <div class="ct-qte-vehicle">▶ {{ qte.vehicleName }}</div>
+
+    <div class="ct-qte-bar">
+      <div class="ct-qte-zone"
+           ng-style="{
+             left: (qte.targetMin * 100) + '%',
+             width: ((qte.targetMax - qte.targetMin) * 100) + '%'
+           }"></div>
+      <div class="ct-qte-cursor"
+           ng-style="{ left: (qte.cursorPos * 100) + '%' }"></div>
+    </div>
+
+    <div class="ct-qte-hint">
+      Appuie <span class="ct-qte-key">K</span> dans la zone verte
+    </div>
+  </div>
+
+  <!-- ── Feedback toast (haut-centre) ─────────────────────────────────── -->
   <div class="ct-feedback" ng-show="feedbackVisible" ng-class="feedbackClass">
     <div class="ct-fb-icon">{{ feedbackIcon }}</div>
     <div class="ct-fb-body">
@@ -111,11 +781,12 @@
     </div>
   </div>
 
+  <!-- ── Badge RECHERCHÉ (haut-gauche) ────────────────────────────────── -->
   <div class="ct-wanted" ng-show="wanted.active">
     <div class="ct-wanted-stars">
-      <span class="ct-star ct-star-1">*</span>
-      <span class="ct-star ct-star-2">*</span>
-      <span class="ct-star ct-star-3">*</span>
+      <span class="ct-star">★</span>
+      <span class="ct-star">★</span>
+      <span class="ct-star">★</span>
     </div>
     <div class="ct-wanted-label">RECHERCHÉ</div>
     <div class="ct-wanted-timer">{{ wanted.timeStr }}</div>

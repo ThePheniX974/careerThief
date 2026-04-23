@@ -1,4 +1,7 @@
 local M = {}
+local PROGRESSION_SAVE_FILE = "careerThief_progression.json"
+local CUSTOM_DROPOFFS_FILE = "careerThief_dropoffs.json"
+local customDropoffs = {}
 
 local cfg = {
   targeting = {
@@ -76,6 +79,11 @@ local function logError(msg)
   print("[CareerThief][ERROR] " .. tostring(msg))
 end
 
+-- Logger flow principal (touche, QTE, mission). Toujours visible.
+local function logFlow(tag, msg)
+  print("[CareerThief][" .. tostring(tag) .. "] " .. tostring(msg))
+end
+
 -- ── État interne ──────────────────────────────────────────────────────────────
 local state = {
   active = false,
@@ -84,10 +92,18 @@ local state = {
   wantedTimer = 0.0,
   uiTick = 0.0,
   mission = nil,
+  qte = nil,  -- { active, vehId, vehicleName, duration, elapsed, cursorPos, direction, speed, targetMin, targetMax }
+  nav = {
+    hasRoute = false,
+    method = nil,
+    retryTimer = 0.0
+  },
   market = {
     listing = nil,
     lastOffer = nil
   },
+  soldVehicleIds = {},
+  pendingSoldDespawn = nil,
   progression = {
     level = 0,
     xp = 0,
@@ -104,6 +120,103 @@ local state = {
 -- ── Utilitaires mathématiques ─────────────────────────────────────────────────
 local function sendUI(data)
   guihooks.trigger("careerThief_update", data)
+end
+
+local function toVec3(pos)
+  if not pos then return nil end
+  if vec3 then
+    return vec3(pos.x, pos.y, pos.z)
+  end
+  return { x = pos.x, y = pos.y, z = pos.z }
+end
+
+local function setDropoffNavigation(dropoff)
+  if not dropoff or not dropoff.pos then return false end
+  local p = dropoff.pos
+  -- Version fiable: on garde strictement les coords du dropoff configuré.
+  -- Pas de getTerrainHeight (retours incohérents sur certaines versions).
+  local navPos = { x = p.x, y = p.y, z = (p.z or 0) + 1.0 }
+
+  local payload = {
+    -- Certaines versions lisent x/y/z, d'autres payload.pos
+    x = navPos.x, y = navPos.y, z = navPos.z,
+    pos = { x = navPos.x, y = navPos.y, z = navPos.z },
+    radius = dropoff.radius or 20,
+    name = dropoff.name or "Dropoff"
+  }
+
+  local okAny = false
+  local methods = {}
+
+  local function callNav(label, fn)
+    local ok, err = pcall(fn)
+    logFlow("NAV", string.format("%s ok=%s err=%s", label, tostring(ok), tostring(err)))
+    if ok then
+      okAny = true
+      methods[#methods + 1] = label
+    end
+  end
+
+  -- UI hooks (certains builds écoutent SetWaypoint, d'autres SetRoute)
+  callNav("guihooks.SetWaypoint", function()
+    guihooks.trigger("SetWaypoint", payload)
+  end)
+  callNav("guihooks.SetRoute", function()
+    guihooks.trigger("SetRoute", payload)
+  end)
+
+  -- APIs freeroam (quand disponibles)
+  if freeroam_bigMapMode and type(freeroam_bigMapMode.setOnlyTarget) == "function" then
+    callNav("freeroam_bigMapMode.setOnlyTarget(vec3)", function()
+      freeroam_bigMapMode.setOnlyTarget(toVec3(navPos))
+    end)
+    callNav("freeroam_bigMapMode.setOnlyTarget(table)", function()
+      freeroam_bigMapMode.setOnlyTarget({ x = navPos.x, y = navPos.y, z = navPos.z })
+    end)
+    callNav("freeroam_bigMapMode.setOnlyTarget(xyz)", function()
+      freeroam_bigMapMode.setOnlyTarget(navPos.x, navPos.y, navPos.z)
+    end)
+  end
+  if freeroam_bigMapMode and type(freeroam_bigMapMode.setNavFocus) == "function" then
+    callNav("freeroam_bigMapMode.setNavFocus", function()
+      freeroam_bigMapMode.setNavFocus(toVec3(navPos))
+    end)
+  end
+  if freeroam_bigMapMode and type(freeroam_bigMapMode.navigateTo) == "function" then
+    callNav("freeroam_bigMapMode.navigateTo", function()
+      freeroam_bigMapMode.navigateTo(toVec3(navPos))
+    end)
+  end
+
+  state.nav.hasRoute = okAny
+  state.nav.method = table.concat(methods, ", ")
+  logFlow("NAV", string.format(
+    "dropoff='%s' raw=(%.1f, %.1f, %.1f) nav=(%.1f, %.1f, %.1f) methods=[%s]",
+    tostring(dropoff.name or "Dropoff"),
+    p.x, p.y, p.z or 0,
+    navPos.x, navPos.y, navPos.z,
+    state.nav.method
+  ))
+
+  return okAny
+end
+
+local function clearDropoffNavigation()
+  state.nav.hasRoute = false
+  state.nav.method = nil
+  state.nav.retryTimer = 0.0
+  -- Nettoyage best-effort sur APIs possibles.
+  pcall(function()
+    if freeroam_bigMapMode and type(freeroam_bigMapMode.clearRoute) == "function" then
+      freeroam_bigMapMode.clearRoute()
+    end
+  end)
+  pcall(function()
+    guihooks.trigger("ClearWaypoint")
+  end)
+  pcall(function()
+    guihooks.trigger("ClearRoute")
+  end)
 end
 
 local function vecDot(a, b)
@@ -494,7 +607,8 @@ local function getNextLevelXp(level)
   return cfg.progression.levelThresholds[#cfg.progression.levelThresholds]
 end
 
-local function recomputeProgression()
+local function recomputeProgression(emitFeedback)
+  if emitFeedback == nil then emitFeedback = true end
   local level = 0
   for idx, threshold in ipairs(cfg.progression.levelThresholds) do
     if state.progression.xp >= threshold then
@@ -508,7 +622,7 @@ local function recomputeProgression()
   state.progression.level = level
   state.progression.nextLevelXp = getNextLevelXp(level)
   state.progression.bonuses = recomputeCumulativeBonuses(level)
-  if levelChanged then
+  if emitFeedback and levelChanged then
     sendUI({
       type = "feedback",
       level = "success",
@@ -516,6 +630,151 @@ local function recomputeProgression()
       sub = "Nouveaux avantages debloques"
     })
   end
+end
+
+local function saveProgression()
+  local payload = {
+    xp = math.max(0, math.floor(state.progression.xp or 0)),
+    savedAt = os.time()
+  }
+  local ok, err = pcall(function()
+    -- NOTE: certaines builds BeamNG n'aiment pas le 3e argument "pretty".
+    jsonWriteFile(PROGRESSION_SAVE_FILE, payload)
+  end)
+  if not ok then
+    logWarn("Sauvegarde progression impossible: " .. tostring(err))
+  end
+end
+
+local function loadProgression()
+  local ok, data = pcall(function()
+    return jsonReadFile(PROGRESSION_SAVE_FILE)
+  end)
+  if not ok or type(data) ~= "table" then
+    return false
+  end
+  local xp = math.max(0, math.floor(tonumber(data.xp) or 0))
+  state.progression.xp = xp
+  recomputeProgression(false)
+  logFlow("PROGRESSION", "Chargee depuis fichier: xp=" .. tostring(xp) .. " level=" .. tostring(state.progression.level))
+  return true
+end
+
+local function addCustomDropoffToConfig(d)
+  if type(d) ~= "table" or type(d.pos) ~= "table" then return false end
+  d.id = tostring(d.id or ("drop_" .. tostring(os.time())))
+  d.name = tostring(d.name or "Dropoff")
+  d.radius = tonumber(d.radius) or 22.0
+  local pos = {
+    x = tonumber(d.pos.x),
+    y = tonumber(d.pos.y),
+    z = tonumber(d.pos.z)
+  }
+  if not (pos.x and pos.y and pos.z) then return false end
+
+  for _, existing in ipairs(cfg.dropoff.locations or {}) do
+    if existing.id == d.id then
+      return false
+    end
+  end
+
+  table.insert(cfg.dropoff.locations, {
+    id = d.id,
+    name = d.name,
+    pos = pos,
+    radius = d.radius
+  })
+  return true
+end
+
+local function saveCustomDropoffs()
+  local payload = { locations = customDropoffs }
+  local ok, err = pcall(function()
+    -- NOTE: éviter le 3e argument "pretty" (peut déclencher des erreurs
+    -- silencieuses/err=nil selon le wrapper console).
+    jsonWriteFile(CUSTOM_DROPOFFS_FILE, payload)
+  end)
+  if not ok then
+    logWarn("Sauvegarde des dropoffs custom impossible: " .. tostring(err))
+    return false
+  end
+  return true
+end
+
+local function loadCustomDropoffs()
+  local ok, data = pcall(function()
+    return jsonReadFile(CUSTOM_DROPOFFS_FILE)
+  end)
+  if not ok or type(data) ~= "table" then
+    customDropoffs = {}
+    return
+  end
+
+  local list = data.locations
+  if type(list) ~= "table" then
+    customDropoffs = {}
+    return
+  end
+
+  customDropoffs = {}
+  local added = 0
+  for _, d in ipairs(list) do
+    local copy = {
+      id = d.id,
+      name = d.name,
+      pos = d.pos,
+      radius = d.radius
+    }
+    table.insert(customDropoffs, copy)
+    if addCustomDropoffToConfig(copy) then
+      added = added + 1
+    end
+  end
+  if added > 0 then
+    logFlow("NAV", "Dropoffs custom charges: +" .. tostring(added))
+  end
+end
+
+local function exportDropoffsToConfigFile()
+  local okRead, baseCfg = pcall(function()
+    return jsonReadFile("careerThief_config.json")
+  end)
+  if not okRead or type(baseCfg) ~= "table" then
+    return false, "Impossible de lire careerThief_config.json"
+  end
+
+  if type(baseCfg.dropoff) ~= "table" then
+    baseCfg.dropoff = {}
+  end
+  baseCfg.dropoff.minIntegrity = baseCfg.dropoff.minIntegrity or cfg.dropoff.minIntegrity
+  baseCfg.dropoff.maxDropoffSpeed = baseCfg.dropoff.maxDropoffSpeed or cfg.dropoff.maxDropoffSpeed
+
+  local locations = {}
+  for _, d in ipairs(cfg.dropoff.locations or {}) do
+    if d and d.pos then
+      locations[#locations + 1] = {
+        id = tostring(d.id or ("drop_" .. tostring(#locations + 1))),
+        name = tostring(d.name or "Dropoff"),
+        pos = {
+          x = tonumber(d.pos.x) or 0,
+          y = tonumber(d.pos.y) or 0,
+          z = tonumber(d.pos.z) or 0
+        },
+        radius = tonumber(d.radius) or 22.0
+      }
+    end
+  end
+
+  baseCfg.dropoff.locations = locations
+
+  local okWrite, errWrite = pcall(function()
+    jsonWriteFile("careerThief_config.json", baseCfg)
+  end)
+  if not okWrite then
+    return false, "Ecriture impossible: " .. tostring(errWrite)
+  end
+
+  return true, "Export OK (" .. tostring(#locations) .. " dropoff(s))"
 end
 
 local function sendProgressionUI()
@@ -534,6 +793,7 @@ local function addXp(amount, reason)
   if gain <= 0 then return end
   state.progression.xp = state.progression.xp + gain
   recomputeProgression()
+  saveProgression()
   sendUI({
     type = "xpGain",
     amount = gain,
@@ -541,11 +801,128 @@ local function addXp(amount, reason)
   })
 end
 
+local function creditPlayerMoney(amount, reason)
+  local amt = math.max(0, math.floor(amount or 0))
+  if amt <= 0 then return false end
+  reason = reason or "blackmarketSale"
+
+  local function readMoney()
+    local v = nil
+    pcall(function()
+      if career_modules_playerAttributes and type(career_modules_playerAttributes.getAttributeValue) == "function" then
+        v = career_modules_playerAttributes.getAttributeValue("money")
+      end
+    end)
+    if type(v) ~= "number" then
+      pcall(function()
+        if career_modules_playerAttributes and type(career_modules_playerAttributes.getAttributes) == "function" then
+          local t = career_modules_playerAttributes.getAttributes()
+          if type(t) == "table" then
+            v = t.money
+          end
+        end
+      end)
+    end
+    return v
+  end
+
+  local before = readMoney()
+
+  local candidates = {
+    -- Méthode la plus fiable en carrière récente: addAttributes avec méta transaction.
+    function()
+      if career_modules_playerAttributes and type(career_modules_playerAttributes.addAttributes) == "function" then
+        return career_modules_playerAttributes.addAttributes(
+          { money = amt },
+          { tags = { "gameplay", "careerThief" }, label = "BlackMarket sale" }
+        )
+      end
+    end,
+    function()
+      if career_modules_playerAttributes and type(career_modules_playerAttributes.addAttribute) == "function" then
+        return career_modules_playerAttributes.addAttribute("money", amt)
+      end
+    end,
+    function()
+      if career_modules_inventory and type(career_modules_inventory.addMoney) == "function" then
+        return career_modules_inventory.addMoney(amt, reason)
+      end
+    end
+  }
+
+  for i, fn in ipairs(candidates) do
+    local ok, ret = pcall(fn)
+    local after = readMoney()
+    if ok and (ret ~= false) then
+      logFlow("MONEY", string.format(
+        "Credit attempt method#%d ok ret=%s amount=%d moneyBefore=%s moneyAfter=%s",
+        i, tostring(ret), amt, tostring(before), tostring(after)
+      ))
+      if type(before) == "number" and type(after) == "number" and after < before + amt then
+        -- la méthode a répondu OK mais l'argent n'a pas bougé comme attendu, on continue.
+      else
+        return true
+      end
+    else
+      logFlow("MONEY", "Method#" .. tostring(i) .. " failed ok=" .. tostring(ok) .. " ret=" .. tostring(ret))
+    end
+  end
+
+  -- Dernier filet: commande GE brute équivalente à la console système.
+  local rawCmd = string.format(
+    "if career_modules_playerAttributes and career_modules_playerAttributes.addAttributes then career_modules_playerAttributes.addAttributes({money=%d}, {tags={'gameplay','careerThief'}, label='BlackMarket sale'}) end",
+    amt
+  )
+  local okRaw = pcall(function() queueGameEngineLua(rawCmd) end)
+  local afterRaw = readMoney()
+  logFlow("MONEY", string.format(
+    "Raw GE credit ok=%s amount=%d moneyBefore=%s moneyAfter=%s",
+    tostring(okRaw), amt, tostring(before), tostring(afterRaw)
+  ))
+  if type(before) == "number" and type(afterRaw) == "number" then
+    if afterRaw >= before + amt then
+      return true
+    end
+  end
+  logWarn("Aucune methode de credit argent n'a fonctionne.")
+  return false
+end
+
+local function despawnSoldVehicle(vehId)
+  if not vehId then return end
+  state.soldVehicleIds[vehId] = true
+
+  local playerVeh = be and be:getPlayerVehicle(0) or nil
+  if playerVeh and playerVeh:getID() == vehId then
+    -- Évite le retour brutal à un point safe si on supprime la voiture alors
+    -- que le joueur est encore dedans.
+    state.pendingSoldDespawn = vehId
+    logFlow("MISSION", "Despawn differe: joueur encore dans le vehicule vendu (id=" .. tostring(vehId) .. ").")
+    return
+  end
+
+  pcall(function()
+    if gameplay_traffic and type(gameplay_traffic.removeTraffic) == "function" then
+      gameplay_traffic.removeTraffic(vehId)
+    end
+  end)
+
+  local obj = be and be:getObjectByID(vehId) or nil
+  if not obj then return end
+  local ok = pcall(function() obj:delete() end)
+  if not ok then
+    pcall(function()
+      obj:queueLuaCommand("if obj and obj.delete then obj:delete() end")
+    end)
+  end
+end
+
 local function createListingFromMission(mission)
   local askFactor = randomRange(cfg.marketplace.priceMultiplierMin, cfg.marketplace.priceMultiplierMax)
   local askPrice = math.floor(mission.estimatedValue * askFactor)
   local listing = {
     id = tostring(os.time()) .. "_" .. tostring(math.random(100, 999)),
+    vehicleId = mission.vehicleId,
     vehicleName = mission.vehicleName,
     baseValue = mission.estimatedValue,
     askingPrice = askPrice,
@@ -584,6 +961,9 @@ end
 
 local function isVehicleEligible(targetVehId)
   if not targetVehId then return false, "Aucun vehicule cible" end
+  if state.soldVehicleIds[targetVehId] then
+    return false, "Vehicule deja vendu"
+  end
   local playerVeh = be:getPlayerVehicle(0)
   if not playerVeh then return false, "Vehicule joueur introuvable" end
   if playerVeh:getID() == targetVehId then
@@ -592,9 +972,15 @@ local function isVehicleEligible(targetVehId)
   return true, nil
 end
 
-local function startTheftMission(targetVehId)
+local function startTheftMission(targetVehId, opts)
+  opts = opts or {}
+  logFlow("MISSION", string.format(
+    "startTheftMission | vehId=%s | noPolice=%s",
+    tostring(targetVehId), tostring(opts.noPolice and true or false)
+  ))
   local targetVeh = be:getObjectByID(targetVehId)
   if not targetVeh then
+    logFlow("MISSION", "-> vehicule introuvable, abort.")
     sendUI({ type = "feedback", level = "fail", message = "Vehicule introuvable", sub = "" })
     return
   end
@@ -623,14 +1009,55 @@ local function startTheftMission(targetVehId)
     distanceToDropoff = 0,
     speed = 0
   }
-  state.cooldown = cfg.theft.cooldownAfterSteal
-  local units = alertPolice("success")
-  sendUI({
-    type = "feedback",
-    level = "warn",
-    message = "Police alertee",
-    sub = tostring(units) .. " voiture(s) en poursuite"
-  })
+  -- Temporaire: cooldown désactivé entre les vols.
+  state.cooldown = 0
+
+  -- Prendre possession du véhicule volé : désactiver l'IA traffic + téléporter
+  -- le joueur dans le siège conducteur. Sinon la voiture reste contrôlée par le
+  -- système de traffic IA et le joueur ne peut pas la conduire.
+  do
+    -- 1) Retirer le véhicule du pool de traffic IA
+    if gameplay_traffic and type(gameplay_traffic.removeTraffic) == "function" then
+      local okRm, errRm = pcall(gameplay_traffic.removeTraffic, targetVehId)
+      if okRm then
+        logFlow("MISSION", "-> traffic IA retire (gameplay_traffic.removeTraffic OK).")
+      else
+        logFlow("MISSION", "-> gameplay_traffic.removeTraffic echoue : " .. tostring(errRm))
+      end
+    else
+      logFlow("MISSION", "-> gameplay_traffic.removeTraffic indisponible, skip.")
+    end
+
+    -- 2) Désactiver l'AI côté VLUA (mode 'disabled')
+    local okAi = pcall(function()
+      targetVeh:queueLuaCommand("if ai and ai.setMode then ai.setMode('disabled') end")
+    end)
+    if okAi then
+      logFlow("MISSION", "-> ai.setMode('disabled') envoye au vehicule.")
+    end
+
+    -- 3) Téléporter le joueur dans le véhicule volé (siège 0 = conducteur)
+    local okEnter, errEnter = pcall(function()
+      be:enterVehicle(0, targetVeh)
+    end)
+    if okEnter then
+      logFlow("MISSION", "-> be:enterVehicle OK, joueur transfere dans le vehicule vole.")
+    else
+      logFlow("MISSION", "-> be:enterVehicle echoue : " .. tostring(errEnter))
+    end
+  end
+
+  -- Police déclenchée uniquement si pas de flag noPolice (QTE réussi = vol discret).
+  if not opts.noPolice then
+    local units = alertPolice("success")
+    sendUI({
+      type = "feedback",
+      level = "warn",
+      message = "Police alertee",
+      sub = tostring(units) .. " voiture(s) en poursuite"
+    })
+  end
+
   addXp(cfg.progression.xpRewards.theftSuccess, "vol_reussi")
   sendUI({
     type = "theftStarted",
@@ -639,6 +1066,12 @@ local function startTheftMission(targetVehId)
     estimatedValue = est
   })
   state.mission.status = "enRouteToDropoff"
+  setDropoffNavigation(dropoff)
+  state.nav.retryTimer = 0.0
+  logFlow("MISSION", string.format(
+    "-> mission demarree | veh='%s' | dropoff='%s' | integrity=%.2f | est=%d",
+    state.mission.vehicleName, dropoff.name, integrity, est
+  ))
   pushMissionUI()
 end
 
@@ -675,6 +1108,7 @@ local function tryFinalizeDropoff()
   end
 
   state.mission.status = "listed"
+  clearDropoffNavigation()
   state.market.listing = createListingFromMission(state.mission)
   state.market.lastOffer = nil
   addXp(cfg.progression.xpRewards.dropoffComplete, "dropoff_valide")
@@ -721,6 +1155,7 @@ local function updateMissionState()
   local playerVeh = be:getPlayerVehicle(0)
   local trackedVeh = be:getObjectByID(state.mission.vehicleId)
   if not playerVeh or not trackedVeh then
+    clearDropoffNavigation()
     state.mission = nil
     state.market.listing = nil
     state.market.lastOffer = nil
@@ -733,6 +1168,7 @@ local function updateMissionState()
   local delta = vecSub({ x = trackedPos.x, y = trackedPos.y, z = trackedPos.z }, { x = playerPos.x, y = playerPos.y, z = playerPos.z })
   local separation = vecLen(delta)
   if separation > cfg.theft.maxTrackedVehicleDistance then
+    clearDropoffNavigation()
     state.mission = nil
     state.market.listing = nil
     state.market.lastOffer = nil
@@ -753,38 +1189,280 @@ local function clearGameplayState()
   state.cooldown = 0
   state.wanted = false
   state.wantedTimer = 0
+  clearDropoffNavigation()
   state.mission = nil
+  state.qte = nil
   state.market.listing = nil
   state.market.lastOffer = nil
-  state.progression.level = 0
-  state.progression.xp = 0
-  state.progression.nextLevelXp = getNextLevelXp(0)
-  state.progression.bonuses = recomputeCumulativeBonuses(0)
+  state.soldVehicleIds = {}
+  state.pendingSoldDespawn = nil
 end
 
 local function applyFailOrCancelCooldown(reasonLabel)
-  state.cooldown = math.max(state.cooldown, cfg.theft.cooldownAfterFailOrCancel)
+  -- Temporaire: cooldown désactivé entre les vols.
+  state.cooldown = 0
   sendUI({
     type = "feedback",
     level = "warn",
-    message = "Cooldown applique",
-    sub = tostring(math.ceil(cfg.theft.cooldownAfterFailOrCancel)) .. "s (" .. tostring(reasonLabel or "echec") .. ")"
+    message = "Pas de cooldown (temporaire)",
+    sub = tostring(reasonLabel or "echec")
   })
 end
 
-function M.onTheftKeyPressed()
-  if not state.active then return end
-  if state.mission and state.mission.status == "enRouteToDropoff" then
+-- ── QTE (Quick Time Event) ────────────────────────────────────────────────────
+-- Barre horizontale avec un curseur qui fait l'aller-retour. Le joueur doit
+-- ré-appuyer K quand le curseur est dans la zone cible (verte). Succès → vol
+-- discret, aucune police. Échec ou timeout → police + cooldown.
+
+local function getQTEConfig()
+  -- Plus le niveau BlackMarket est élevé, plus la zone cible est large et le
+  -- curseur lent, pour récompenser la progression.
+  local lvl = state.progression.level or 0
+  local lvlRatio = math.min(1.0, lvl / math.max(1, cfg.progression.maxLevel))
+
+  local baseZoneWidth = 0.22                 -- 22% de la barre au niveau 0
+  local zoneWidth     = baseZoneWidth + lvlRatio * 0.16   -- jusqu'à 38% au niveau max
+
+  local baseSpeed = 1.15                      -- aller simple en ~0.87s
+  local speed     = baseSpeed - lvlRatio * 0.35           -- 0.80 au niveau max
+
+  local duration  = 4.5                       -- timeout global du QTE
+
+  local zoneStart = math.random() * (1.0 - zoneWidth)
+  return {
+    duration   = duration,
+    speed      = speed,
+    targetMin  = zoneStart,
+    targetMax  = zoneStart + zoneWidth,
+  }
+end
+
+local function startQTE(vehId, vehicleName)
+  local qcfg = getQTEConfig()
+  state.qte = {
+    active      = true,
+    vehId       = vehId,
+    vehicleName = vehicleName or "Vehicule",
+    duration    = qcfg.duration,
+    elapsed     = 0.0,
+    cursorPos   = 0.0,
+    direction   = 1,
+    speed       = qcfg.speed,
+    targetMin   = qcfg.targetMin,
+    targetMax   = qcfg.targetMax,
+  }
+  sendUI({
+    type        = "qteStart",
+    duration    = qcfg.duration,
+    targetMin   = qcfg.targetMin,
+    targetMax   = qcfg.targetMax,
+    vehicleName = vehicleName,
+  })
+  logFlow("QTE", string.format(
+    "START | vehId=%s | vehName='%s' | zone=[%.3f..%.3f] (%.1f%%) | speed=%.2f | duration=%.1fs",
+    tostring(vehId), tostring(vehicleName),
+    qcfg.targetMin, qcfg.targetMax, (qcfg.targetMax - qcfg.targetMin) * 100,
+    qcfg.speed, qcfg.duration
+  ))
+end
+
+-- Forward decl pour que updateQTE puisse appeler validateQTE.
+local failQTE
+local validateQTE
+
+local function updateQTE(dt)
+  local q = state.qte
+  if not q or not q.active then return end
+  q.elapsed = q.elapsed + dt
+  if q.elapsed >= q.duration then
+    failQTE("timeout")
+    return
+  end
+  -- Aller-retour linéaire (0→1→0→1…)
+  q.cursorPos = q.cursorPos + q.direction * q.speed * dt
+  if q.cursorPos >= 1.0 then
+    q.cursorPos = 1.0
+    q.direction = -1
+  elseif q.cursorPos <= 0.0 then
+    q.cursorPos = 0.0
+    q.direction = 1
+  end
+  sendUI({
+    type      = "qteUpdate",
+    cursorPos = q.cursorPos,
+    timeLeft  = math.max(0.0, q.duration - q.elapsed),
+  })
+  -- Log périodique (~1x/seconde) pour confirmer que le QTE tourne et voir la
+  -- progression du curseur.
+  q._nextLogAt = q._nextLogAt or 0
+  if q.elapsed >= q._nextLogAt then
+    logFlow("QTE", string.format(
+      "RUN   | cursor=%.3f | elapsed=%.2fs | timeLeft=%.2fs",
+      q.cursorPos, q.elapsed, q.duration - q.elapsed
+    ))
+    q._nextLogAt = q.elapsed + 1.0
+  end
+end
+
+validateQTE = function ()
+  local q = state.qte
+  if not q or not q.active then return end
+  local hit = q.cursorPos >= q.targetMin and q.cursorPos <= q.targetMax
+  q.active = false
+  sendUI({
+    type      = "qteEnd",
+    success   = hit,
+    cursorPos = q.cursorPos,
+  })
+  logFlow("QTE", string.format(
+    "CHECK | cursor=%.3f | zone=[%.3f..%.3f] | hit=%s | elapsed=%.2fs",
+    q.cursorPos, q.targetMin, q.targetMax, tostring(hit), q.elapsed
+  ))
+
+  if hit then
+    logFlow("QTE", "-> HIT : lancement mission sans police.")
     sendUI({
-      type = "feedback",
-      level = "warn",
-      message = "Livraison en cours",
-      sub = "Amene le vehicule au " .. state.mission.dropoff.name
+      type    = "feedback",
+      level   = "success",
+      message = "Vol discret reussi",
+      sub     = "Aucun temoin, la police n'a rien vu"
     })
+    startTheftMission(q.vehId, { noPolice = true })
+  else
+    logFlow("QTE", "-> MISS : police alertee + cooldown.")
+    applyFailOrCancelCooldown("qte_rate")
+    local failUnits = alertPolice("fail")
+    sendUI({
+      type    = "feedback",
+      level   = "fail",
+      message = "Vol rate",
+      sub     = tostring(failUnits) .. " voitures de police en poursuite"
+    })
+  end
+  state.qte = nil
+end
+
+failQTE = function (reason)
+  local q = state.qte
+  if not q or not q.active then return end
+  q.active = false
+  sendUI({
+    type    = "qteEnd",
+    success = false,
+    reason  = reason,
+  })
+  logFlow("QTE", string.format(
+    "FAIL  | reason=%s | cursor=%.3f | elapsed=%.2fs/%.2fs",
+    tostring(reason), q.cursorPos or -1, q.elapsed or -1, q.duration or -1
+  ))
+  applyFailOrCancelCooldown("qte_" .. tostring(reason or "timeout"))
+  local failUnits = alertPolice("fail")
+  sendUI({
+    type    = "feedback",
+    level   = "fail",
+    message = reason == "timeout" and "Temps ecoule" or "Vol rate",
+    sub     = tostring(failUnits) .. " voitures de police en poursuite"
+  })
+  state.qte = nil
+end
+
+local function cancelQTE()
+  if state.qte then
+    state.qte.active = false
+    sendUI({ type = "qteEnd", success = false, reason = "cancel" })
+    state.qte = nil
+  end
+end
+
+function M.onTheftKeyPressed()
+  logFlow("KEY", string.format(
+    "Touche K pressee. state.active=%s | qte=%s | mission=%s | cooldown=%.1f | wanted=%s",
+    tostring(state.active),
+    (state.qte and state.qte.active) and "ON" or "off",
+    (state.mission and state.mission.status) or "none",
+    state.cooldown or 0,
+    tostring(state.wanted)
+  ))
+
+  -- Si le module est inactif, on tente une auto-réactivation au lieu de return
+  -- silencieux. Ça évite le symptôme "j'appuie K et rien ne se passe" quand
+  -- l'activation de carrière a été ratée (reloadUI, reload extension, etc.).
+  if not state.active then
+    if detectCareerActive() then
+      logFlow("KEY", "-> Module inactif mais carriere active : auto-reactivation.")
+      doActivate("auto-activation via onTheftKeyPressed")
+      sendUI({
+        type = "feedback",
+        level = "warn",
+        message = "Module reactive",
+        sub = "Reessaie maintenant"
+      })
+    else
+      logFlow("KEY", "-> Aucune carriere active, appui ignore.")
+      sendUI({
+        type = "feedback",
+        level = "fail",
+        message = "Mode carriere inactif",
+        sub = "Lance une carriere pour voler"
+      })
+    end
+    return
+  end
+
+  -- QTE en cours ? Alors K = validation du QTE, pas une nouvelle tentative.
+  if state.qte and state.qte.active then
+    logFlow("KEY", string.format(
+      "-> QTE actif : validation. cursorPos=%.3f zone=[%.3f..%.3f] timeLeft=%.2fs",
+      state.qte.cursorPos, state.qte.targetMin, state.qte.targetMax,
+      math.max(0, state.qte.duration - state.qte.elapsed)
+    ))
+    validateQTE()
+    return
+  end
+
+  if state.mission and state.mission.status == "enRouteToDropoff" then
+    local playerVeh = be:getPlayerVehicle(0)
+    local missionVeh = be:getObjectByID(state.mission.vehicleId)
+    local inMissionVeh = playerVeh and missionVeh and (playerVeh:getID() == missionVeh:getID())
+
+    if missionVeh and not inMissionVeh then
+      logFlow("KEY", "-> Mission en cours : tentative de remonter dans le vehicule vole.")
+      pcall(function()
+        missionVeh:queueLuaCommand("if ai and ai.setMode then ai.setMode('disabled') end")
+      end)
+      local okEnter, errEnter = pcall(function()
+        be:enterVehicle(0, missionVeh)
+      end)
+      if okEnter then
+        sendUI({
+          type = "feedback",
+          level = "success",
+          message = "Remontee dans le vehicule",
+          sub = "Direction " .. state.mission.dropoff.name
+        })
+      else
+        logFlow("KEY", "-> Echec re-entree missionVeh : " .. tostring(errEnter))
+        sendUI({
+          type = "feedback",
+          level = "fail",
+          message = "Impossible de remonter",
+          sub = "Rapproche-toi du vehicule et reessaie"
+        })
+      end
+    else
+      logFlow("KEY", "-> Mission en cours (livraison) : deja dans le vehicule.")
+      sendUI({
+        type = "feedback",
+        level = "warn",
+        message = "Livraison en cours",
+        sub = "Amene le vehicule au " .. state.mission.dropoff.name
+      })
+    end
     return
   end
 
   if state.cooldown > 0 then
+    logFlow("KEY", string.format("-> Cooldown actif %.1fs, appui ignore.", state.cooldown))
     sendUI({
       type = "feedback",
       level = "warn",
@@ -794,59 +1472,52 @@ function M.onTheftKeyPressed()
     return
   end
 
+  logFlow("KEY", "-> Raycast depuis la camera...")
   local target = raycastVehicleFromCamera()
   if not target then
+    logFlow("KEY", "-> Raycast : aucune voiture trouvee dans le viseur.")
     sendUI({ type = "feedback", level = "warn", message = "Aucune cible", sub = "Regarde une voiture a voler" })
     return
   end
+  logFlow("KEY", string.format("-> Raycast : cible vehId=%s dist=%.2fm", tostring(target.vehId), target.dist or -1))
 
   local okEligible, reason = isVehicleEligible(target.vehId)
   if not okEligible then
+    logFlow("KEY", "-> Cible inelligible : " .. tostring(reason))
     sendUI({ type = "feedback", level = "warn", message = "Vol impossible", sub = reason or "" })
     return
   end
 
+  -- Chance de vol instantané (bonus niveau élevé) : on saute le QTE.
   local bonuses = state.progression.bonuses
   local instantChance = clamp01(bonuses.instantStealChance)
-  local totalSuccessChance = clamp01(cfg.theft.baseSuccessChance + (bonuses.theftSuccessBonus or 0.0))
   local instantRoll = math.random()
+  logFlow("KEY", string.format(
+    "-> Check vol instantane : chance=%.3f roll=%.3f => %s",
+    instantChance, instantRoll, instantRoll <= instantChance and "HIT" or "miss"
+  ))
   if instantRoll <= instantChance then
     sendUI({
-      type = "feedback",
-      level = "success",
+      type    = "feedback",
+      level   = "success",
       message = "Vol instantane",
-      sub = "Bonus niveau applique"
+      sub     = "Bonus niveau applique"
     })
-    startTheftMission(target.vehId)
+    startTheftMission(target.vehId, { noPolice = true })
     return
   end
 
-  local successRoll = math.random()
-  if successRoll <= totalSuccessChance then
-    startTheftMission(target.vehId)
-    return
-  end
-
-  local avoidRoll = math.random()
-  local avoidPolice = avoidRoll <= clamp01(bonuses.policeAvoidOnFail)
-  if avoidPolice then
-    applyFailOrCancelCooldown("echec discret")
-    sendUI({
-      type = "feedback",
-      level = "warn",
-      message = "Vol rate, discret",
-      sub = "La police n'a pas ete alertee"
-    })
-  else
-    applyFailOrCancelCooldown("echec avec police")
-    local failUnits = alertPolice("fail")
-    sendUI({
-      type = "feedback",
-      level = "fail",
-      message = "Vol rate",
-      sub = tostring(failUnits) .. " voitures de police en poursuite"
-    })
-  end
+  -- Démarre le mini-jeu QTE. Le joueur doit ré-appuyer K dans la zone verte.
+  local targetVeh = be:getObjectByID(target.vehId)
+  local vehicleName = targetVeh and getVehicleDisplayName(targetVeh) or "Vehicule"
+  logFlow("KEY", "-> Demarrage du QTE sur '" .. vehicleName .. "'")
+  startQTE(target.vehId, vehicleName)
+  sendUI({
+    type    = "feedback",
+    level   = "warn",
+    message = "Appuie K dans la zone !",
+    sub     = vehicleName
+  })
 end
 
 function M.acceptBestOffer()
@@ -859,11 +1530,7 @@ function M.acceptBestOffer()
 
   local priceBonus = 1.0 + (state.progression.bonuses.priceFinalBonus or 0.0)
   local payout = math.floor(offer.amount * priceBonus)
-  if career_modules_playerAttributes and career_modules_playerAttributes.addAttribute then
-    pcall(career_modules_playerAttributes.addAttribute, "money", payout)
-  elseif career_modules_inventory and career_modules_inventory.addMoney then
-    pcall(career_modules_inventory.addMoney, payout, "blackmarketSale")
-  end
+  local paid = creditPlayerMoney(payout, "blackmarketSale")
 
   listing.status = "sold"
   if state.mission then state.mission.status = "sold" end
@@ -874,8 +1541,22 @@ function M.acceptBestOffer()
     buyer = offer.buyer
   })
   addXp(cfg.progression.xpRewards.saleComplete, "vente_finalisee")
+  if listing.vehicleId then
+    despawnSoldVehicle(listing.vehicleId)
+  elseif state.mission and state.mission.vehicleId then
+    despawnSoldVehicle(state.mission.vehicleId)
+  end
+  if not paid then
+    sendUI({
+      type = "feedback",
+      level = "warn",
+      message = "Paiement a verifier",
+      sub = "Le credit argent n'a pas ete confirme"
+    })
+  end
   state.market.lastOffer = nil
   state.market.listing = nil
+  clearDropoffNavigation()
   state.mission = nil
 end
 
@@ -895,6 +1576,7 @@ function M.cancelListing()
   end
   state.market.listing = nil
   state.market.lastOffer = nil
+  clearDropoffNavigation()
   state.mission = nil
   applyFailOrCancelCooldown("annulation")
   sendUI({ type = "feedback", level = "warn", message = "Annonce retiree", sub = "Vehicule retire du BlackMarket" })
@@ -902,6 +1584,16 @@ end
 
 function M.onUpdate(dtReal, dtSim, dtRaw)
   if not state.active then return end
+
+  if state.pendingSoldDespawn then
+    local playerVeh = be and be:getPlayerVehicle(0) or nil
+    if (not playerVeh) or playerVeh:getID() ~= state.pendingSoldDespawn then
+      local id = state.pendingSoldDespawn
+      state.pendingSoldDespawn = nil
+      logFlow("MISSION", "Execution despawn differe vehicule vendu id=" .. tostring(id))
+      despawnSoldVehicle(id)
+    end
+  end
 
   if state.cooldown > 0 then
     state.cooldown = math.max(0.0, state.cooldown - dtReal)
@@ -914,8 +1606,21 @@ function M.onUpdate(dtReal, dtSim, dtRaw)
     end
   end
 
+  updateQTE(dtReal)
   updateMissionState()
   updateMarketplace(dtReal)
+
+  -- Certains écrans (ex: big map) nettoient les markers. On repose
+  -- périodiquement le waypoint tant que la mission de livraison est active.
+  if state.mission and state.mission.status == "enRouteToDropoff" then
+    state.nav.retryTimer = (state.nav.retryTimer or 0.0) + dtReal
+    if state.nav.retryTimer >= 2.5 then
+      state.nav.retryTimer = 0.0
+      setDropoffNavigation(state.mission.dropoff)
+    end
+  else
+    state.nav.retryTimer = 0.0
+  end
 
   state.uiTick = state.uiTick + dtReal
   if state.uiTick >= 0.25 then
@@ -1047,6 +1752,206 @@ function M.onExtensionLoaded()
   end
 end
 
+function M.printPlayerPos()
+  local veh = be and be:getPlayerVehicle(0)
+  if not veh then
+    return "Aucun vehicule joueur."
+  end
+  local p = veh:getPosition()
+  local msg = string.format("PlayerPos x=%.3f y=%.3f z=%.3f", p.x, p.y, p.z)
+  logFlow("DEBUG", msg)
+  return msg
+end
+
+function M.setDropoffHere()
+  local veh = be and be:getPlayerVehicle(0)
+  if not veh then
+    return "Aucun vehicule joueur."
+  end
+  local p = veh:getPosition()
+  if not cfg.dropoff.locations or not cfg.dropoff.locations[1] then
+    return "Aucun dropoff configure."
+  end
+
+  cfg.dropoff.locations[1].pos = { x = p.x, y = p.y, z = p.z }
+  local d = cfg.dropoff.locations[1]
+  logFlow("NAV", string.format("Dropoff recale sur position joueur: (%.2f, %.2f, %.2f)", p.x, p.y, p.z))
+
+  if state.mission and state.mission.dropoff then
+    state.mission.dropoff.pos = { x = p.x, y = p.y, z = p.z }
+    setDropoffNavigation(state.mission.dropoff)
+    sendUI({
+      type = "feedback",
+      level = "success",
+      message = "Dropoff recale",
+      sub = "Waypoint mis a jour"
+    })
+  else
+    setDropoffNavigation(d)
+  end
+
+  return string.format("Dropoff mis a jour: x=%.2f y=%.2f z=%.2f", p.x, p.y, p.z)
+end
+
+function M.addDropoffHere(name)
+  local ok, result = pcall(function()
+    if not cfg.dropoff then cfg.dropoff = {} end
+    if type(cfg.dropoff.locations) ~= "table" then cfg.dropoff.locations = {} end
+    if type(customDropoffs) ~= "table" then customDropoffs = {} end
+
+    local veh = be and be:getPlayerVehicle(0)
+    if not veh then
+      return "Aucun vehicule joueur."
+    end
+    local p = veh:getPosition()
+    if not p then
+      return "Position joueur introuvable."
+    end
+
+    local label = tostring(name or "")
+    if label == "" then
+      label = "BlackMarket " .. tostring(#customDropoffs + 1)
+    end
+    local id = "custom_" .. tostring(os.time()) .. "_" .. tostring(math.random(100, 999))
+    local radius = (cfg.dropoff.locations[1] and cfg.dropoff.locations[1].radius) or 22.0
+
+    local d = {
+      id = id,
+      name = label,
+      pos = { x = tonumber(p.x) or 0, y = tonumber(p.y) or 0, z = tonumber(p.z) or 0 },
+      radius = tonumber(radius) or 22.0
+    }
+
+    table.insert(customDropoffs, d)
+    local added = addCustomDropoffToConfig(d)
+    if not added then
+      return "Impossible d'ajouter ce dropoff."
+    end
+
+    local saved = saveCustomDropoffs()
+    logFlow("NAV", string.format("Nouveau dropoff ajoute: %s (%.2f, %.2f, %.2f)", label, d.pos.x, d.pos.y, d.pos.z))
+    -- Retour simple (string) pour éviter tout souci de sérialisation console.
+    return string.format("Dropoff ajoute (%s) saved=%s", label, tostring(saved))
+  end)
+
+  if not ok then
+    logError("addDropoffHere a echoue: " .. tostring(result))
+    return "Erreur addDropoffHere: " .. tostring(result)
+  end
+  return result
+end
+
+function M.listDropoffs()
+  local out = {}
+  for i, d in ipairs(cfg.dropoff.locations or {}) do
+    out[#out + 1] = string.format("%d) %s [%s] @ %.1f, %.1f, %.1f r=%.1f",
+      i, tostring(d.name), tostring(d.id), d.pos.x or 0, d.pos.y or 0, d.pos.z or 0, d.radius or 0)
+  end
+  local msg = table.concat(out, "\n")
+  logFlow("NAV", "Dropoffs:\n" .. msg)
+  return msg
+end
+
+function M.removeDropoff(ref)
+  local ok, result = pcall(function()
+    if type(cfg.dropoff) ~= "table" then cfg.dropoff = {} end
+    if type(cfg.dropoff.locations) ~= "table" then cfg.dropoff.locations = {} end
+    if type(customDropoffs) ~= "table" then customDropoffs = {} end
+
+    local n = #cfg.dropoff.locations
+    if n == 0 then
+      return "Aucun dropoff a supprimer."
+    end
+
+    local idx = nil
+    local needleNum = tonumber(ref)
+    if needleNum then
+      local i = math.floor(needleNum)
+      if i >= 1 and i <= n then
+        idx = i
+      end
+    end
+
+    if not idx and ref ~= nil then
+      local needle = tostring(ref):lower()
+      for i, d in ipairs(cfg.dropoff.locations) do
+        local id = tostring(d.id or ""):lower()
+        local name = tostring(d.name or ""):lower()
+        if id == needle or name == needle then
+          idx = i
+          break
+        end
+      end
+    end
+
+    if not idx then
+      return "Introuvable. Utilise index, id ou nom exact."
+    end
+
+    if n <= 1 then
+      return "Refus: garder au moins 1 dropoff."
+    end
+
+    local removed = table.remove(cfg.dropoff.locations, idx)
+    if not removed then
+      return "Suppression echouee."
+    end
+
+    customDropoffs = {}
+    for _, d in ipairs(cfg.dropoff.locations) do
+      local id = tostring(d.id or "")
+      if id:match("^custom_") then
+        customDropoffs[#customDropoffs + 1] = {
+          id = d.id,
+          name = d.name,
+          pos = d.pos,
+          radius = d.radius
+        }
+      end
+    end
+    saveCustomDropoffs()
+
+    local msg = string.format("Dropoff supprime: %s [%s]", tostring(removed.name), tostring(removed.id))
+    logFlow("NAV", msg)
+    return msg
+  end)
+
+  if not ok then
+    logError("removeDropoff a echoue: " .. tostring(result))
+    return "Erreur removeDropoff: " .. tostring(result)
+  end
+  return result
+end
+
+function M.removeDropoffAt(index)
+  local i = tonumber(index)
+  if not i then
+    return "Index invalide."
+  end
+  return M.removeDropoff(math.floor(i))
+end
+
+function M.removeLastDropoff()
+  if type(cfg.dropoff) ~= "table" or type(cfg.dropoff.locations) ~= "table" then
+    return "Aucun dropoff configure."
+  end
+  local n = #cfg.dropoff.locations
+  if n <= 1 then
+    return "Refus: garder au moins 1 dropoff."
+  end
+  return M.removeDropoff(n)
+end
+
+function M.exportDropoffsToConfig()
+  local ok, msg = exportDropoffsToConfigFile()
+  if ok then
+    logFlow("NAV", msg .. " vers careerThief_config.json")
+    return msg
+  end
+  logWarn("Export dropoffs config echoue: " .. tostring(msg))
+  return "Export echoue: " .. tostring(msg)
+end
+
 function M.forceActivate()
   doActivate("forceActivate (console)")
   return "Career Thief BlackMarket actif."
@@ -1055,7 +1960,10 @@ end
 local function init()
   math.randomseed(os.time())
   loadConfig()
-  recomputeProgression()
+  loadCustomDropoffs()
+  state.progression.xp = 0
+  recomputeProgression(false)
+  loadProgression()
   logInfo("Extension Career Thief BlackMarket chargee.")
 end
 
