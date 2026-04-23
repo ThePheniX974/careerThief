@@ -309,7 +309,16 @@ local function getVehicleDisplayName(vehObj)
   return "Vehicule " .. tostring(vehObj:getID())
 end
 
-local function alertPolice()
+local function alertPolice(pursuitKind)
+  -- pursuitKind:
+  --   "success" -> vol reussi, poursuite legere (1-2 unites)
+  --   "fail"    -> vol rate, poursuite lourde (3-6 unites)
+  pursuitKind = pursuitKind or "success"
+  local minUnits = pursuitKind == "fail" and 3 or 1
+  local maxUnits = pursuitKind == "fail" and 6 or 2
+  local wantedUnits = math.random(minUnits, maxUnits)
+  local offenseScore = pursuitKind == "fail" and (1200 + wantedUnits * 260) or (420 + wantedUnits * 140)
+
   state.wanted      = true
   state.wantedTimer = cfg.theft.wantedDuration
 
@@ -319,7 +328,10 @@ local function alertPolice()
   if playerVehId and playerVehId >= 0 and gameplay_police and gameplay_traffic then
     -- Aligner le temps d'évasion du système de poursuite natif sur notre wantedDuration
     if gameplay_police.setPursuitVars then
-      pcall(gameplay_police.setPursuitVars, { evadeTime = cfg.theft.wantedDuration })
+      pcall(gameplay_police.setPursuitVars, {
+        evadeTime = cfg.theft.wantedDuration,
+        desiredPoliceUnits = wantedUnits
+      })
     end
 
     -- S'assurer que le joueur est inscrit dans la traffic data, requis pour qu'une
@@ -346,18 +358,18 @@ local function alertPolice()
     local trafficVeh = trafficData[playerVehId]
     if trafficVeh and type(trafficVeh.triggerOffense) == "function" then
       local okOff = pcall(function()
-        trafficVeh:triggerOffense({ key = "vehicleTheft", value = "stolenVehicle", score = 850 })
+        trafficVeh:triggerOffense({ key = "vehicleTheft", value = "stolenVehicle", score = offenseScore })
       end)
       if okOff then
-        logInfo("Infraction 'vehicleTheft' enregistree sur pursuit (score +850).")
+        logInfo("Infraction 'vehicleTheft' enregistree sur pursuit (score +" .. tostring(offenseScore) .. ").")
         alerted = true
       else
         logWarn("triggerOffense('partTheft') a échoué.")
       end
     elseif trafficVeh and trafficVeh.pursuit then
       -- Plan B : pousser directement addScore (même effet sans le tag d'infraction)
-      trafficVeh.pursuit.addScore = (trafficVeh.pursuit.addScore or 0) + 850
-      logInfo("pursuit.addScore bumpe de +850 (triggerOffense indisponible).")
+      trafficVeh.pursuit.addScore = (trafficVeh.pursuit.addScore or 0) + offenseScore
+      logInfo("pursuit.addScore bumpe de +" .. tostring(offenseScore) .. " (triggerOffense indisponible).")
     end
 
     -- Coup de grâce : forcer le mode de poursuite actif immédiatement (mode 2 = poursuite).
@@ -397,7 +409,13 @@ local function alertPolice()
     logWarn("Aucune API police disponible (gameplay_police / gameplay_traffic / career_modules_lawEnforcement) - état wanted affiché en HUD uniquement.")
   end
 
-  sendUI({ type = "wantedStart", duration = cfg.theft.wantedDuration })
+  sendUI({
+    type = "wantedStart",
+    duration = cfg.theft.wantedDuration,
+    policeUnits = wantedUnits,
+    pursuitKind = pursuitKind
+  })
+  return wantedUnits
 end
 
 local function getVehicleIntegrity(vehObj)
@@ -605,7 +623,13 @@ local function startTheftMission(targetVehId)
     speed = 0
   }
   state.cooldown = cfg.theft.cooldownAfterSteal
-  alertPolice()
+  local units = alertPolice("success")
+  sendUI({
+    type = "feedback",
+    level = "warn",
+    message = "Police alertee",
+    sub = tostring(units) .. " voiture(s) en poursuite"
+  })
   addXp(cfg.progression.xpRewards.theftSuccess, "vol_reussi")
   sendUI({
     type = "theftStarted",
@@ -802,12 +826,12 @@ function M.onTheftKeyPressed()
       sub = "La police n'a pas ete alertee"
     })
   else
-    alertPolice()
+    local failUnits = alertPolice("fail")
     sendUI({
       type = "feedback",
       level = "fail",
       message = "Vol rate",
-      sub = "Police alertee"
+      sub = tostring(failUnits) .. " voitures de police en poursuite"
     })
   end
 end

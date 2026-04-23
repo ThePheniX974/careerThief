@@ -1,68 +1,68 @@
 # Career Thief BlackMarket
 
-Ce mod transforme le gameplay en mode carrière:
+This mod changes Career Mode gameplay with a BlackMarket vehicle theft loop:
 
-- vol de voiture au regard (touche `K`)
-- livraison vers un point `BlackMarket` (docks par défaut)
-- création d’une annonce marketplace locale
-- réception d’offres clients et vente
+- steal a vehicle by aiming at it (key `K`)
+- deliver the stolen vehicle to a `BlackMarket` dropoff (docks by default)
+- create a local marketplace listing
+- receive buyer offers and sell the vehicle
 
-## Boucle de gameplay
+## Gameplay Loop
 
-1. Regarder une voiture et appuyer sur `K` pour lancer le vol
-2. La police est alertée immédiatement
-3. Conduire la voiture volée jusqu’au `dropoff` (docks)
-4. Si vitesse et intégrité sont valides, l’annonce est créée
-5. Attendre les offres, puis accepter/refuser depuis le panneau BlackMarket
-6. Vente validée → paiement crédité
+1. Look at a target vehicle and press `K` to attempt theft
+2. Police is alerted immediately when theft starts
+3. Drive the stolen vehicle to the dropoff area (docks)
+4. If speed and integrity checks pass, a listing is created
+5. Wait for offers, then accept/reject from the BlackMarket panel
+6. Completed sale credits money to the player
 
-## Règles anti-exploit
+## Anti-Exploit Rules
 
-- Impossible de voler son véhicule joueur
-- Cooldown après chaque vol
-- Échec mission si le véhicule volé est trop éloigné/perdu
-- Livraison refusée si:
-  - vitesse trop élevée au dépôt
-  - intégrité sous le seuil minimum
+- You cannot steal your own player vehicle
+- Cooldown applies after each theft attempt
+- Mission fails if the stolen vehicle is lost/too far away
+- Dropoff is rejected if:
+  - speed is above the allowed limit
+  - integrity is below the minimum threshold
 
 ## Configuration
 
-Le fichier `careerThief_config.json` pilote tout l’équilibrage:
+`careerThief_config.json` controls balancing and behavior:
 
-- `targeting`: distance/cône de ciblage
-- `theft`: cooldown, durée recherché, distance max de suivi
-- `dropoff`: points de livraison (docks), rayon, vitesse max, intégrité mini
-- `marketplace`: marge prix et fréquence des offres
-- `progression`: niveaux 0->10, XP, seuils progressifs et bonus cumulés
-- `debug.debugMode`: active les logs `[CareerThief][INFO]`
+- `targeting`: target distance and aim cone
+- `theft`: cooldown, wanted duration, max tracking distance
+- `dropoff`: dropoff points (docks), radius, max speed, min integrity
+- `marketplace`: price ranges and offer timing
+- `progression`: levels 0->10, XP thresholds, cumulative bonuses
+- `debug.debugMode`: enables `[CareerThief][INFO]` logs
 
-## Systeme de niveaux BlackMarket
+## BlackMarket Level System
 
-- Niveau initial: `0`
-- Niveau max: `10`
-- Progression: XP croissante (seuils progressifs)
-- Bonus: cumulatifs
+- Starting level: `0`
+- Max level: `10`
+- Progression: increasing XP thresholds
+- Bonus model: cumulative bonuses
 
-Effets principaux:
+Main effects:
 
-- Bonus prix final de vente
-- Bonus de chance de vol
-- Chance de vol instantane
-- Chance d’eviter l’appel police en cas d’echec (jusqu’a `+25%` au niveau 10)
+- Final sale price bonus
+- Theft success chance bonus
+- Instant theft chance bonus
+- Chance to avoid police call on failed theft (up to `+25%` at level 10)
 
-## Intégration police
+## Police Integration
 
-Le module utilise l’API native BeamNG:
+The module uses native BeamNG APIs:
 
 - `gameplay_police`
 - `gameplay_traffic`
 
-Avec fallback legacy sur `career_modules_lawEnforcement` si nécessaire.
+With legacy fallback to `career_modules_lawEnforcement` when needed.
 
-## Fichiers importants
+## Important Files
 
-- `lua/ge/extensions/career/modules/thief.lua`: logique de vol + mission + marketplace
-- `careerThief_config.json`: équilibrage et points de dropoff
-- `ui/modules/apps/careerThief/app.js`: contrôleur UI
-- `ui/modules/apps/careerThief/app.html`: HUD + panneau BlackMarket
-- `ui/modules/apps/careerThief/app.css`: style du HUD
+- `lua/ge/extensions/career/modules/thief.lua`: theft logic + mission flow + marketplace
+- `careerThief_config.json`: balancing and dropoff configuration
+- `ui/modules/apps/careerThief/app.js`: UI controller
+- `ui/modules/apps/careerThief/app.html`: HUD + BlackMarket panel
+- `ui/modules/apps/careerThief/app.css`: HUD styling
