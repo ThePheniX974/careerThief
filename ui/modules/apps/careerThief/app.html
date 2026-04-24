@@ -118,9 +118,8 @@
 .ct-v-strong { color: var(--ct-accent-2); }
 
 /* ── Positions des panneaux ─────────────────────────────────────────────── */
-.ct-level-card    { top: 18px; }
-.ct-mission-card  { top: 310px; }
-.ct-market-card   { top: 580px; }
+.ct-mission-card  { top: 18px; }
+.ct-market-card   { top: 288px; }
 
 /* ── Bloc Niveau (grand chiffre + barre XP) ─────────────────────────────── */
 .ct-level-hero {
@@ -614,54 +613,6 @@
         <span ng-if="cooldown > 0">Cooldown {{ cooldown | number:0 }}s</span>
         <span ng-if="cooldown <= 0">Prêt</span>
       </div>
-    </div>
-  </div>
-
-  <!-- ── Panneau NIVEAU BlackMarket (haut-droite) ─────────────────────── -->
-  <div class="ct-card ct-level-card">
-    <div class="ct-card-head">
-      <div class="ct-accent-bar"></div>
-      <div class="ct-card-title">BlackMarket · Niveau</div>
-    </div>
-    <div class="ct-card-body">
-
-      <div class="ct-level-hero">
-        <span class="ct-level-num">{{ progression.level }}</span>
-        <span class="ct-level-max">/ {{ progression.maxLevel }}</span>
-        <span class="ct-level-badge">Rang</span>
-      </div>
-
-      <div class="ct-bar ct-bar-xp">
-        <div class="ct-bar-fill" ng-style="{ width: progression.xpPct + '%' }"></div>
-      </div>
-      <div class="ct-bar-label">
-        <span>XP</span>
-        <span class="ct-bar-val">{{ progression.xp }} / {{ progression.nextLevelXp }}</span>
-      </div>
-
-      <div class="ct-sub">Bonus cumulés</div>
-      <div class="ct-bonus">
-        <div class="ct-b-k"><span class="ct-ico">▲</span>Prix final</div>
-        <div class="ct-b-v" ng-class="{ zero: progression.bonuses.priceFinalBonus <= 0 }">
-          +{{ (progression.bonuses.priceFinalBonus * 100) | number:0 }}%
-        </div>
-
-        <div class="ct-b-k"><span class="ct-ico">◆</span>Chance vol</div>
-        <div class="ct-b-v" ng-class="{ zero: progression.bonuses.theftSuccessBonus <= 0 }">
-          +{{ (progression.bonuses.theftSuccessBonus * 100) | number:0 }}%
-        </div>
-
-        <div class="ct-b-k"><span class="ct-ico">⚡</span>Vol instantané</div>
-        <div class="ct-b-v" ng-class="{ zero: progression.bonuses.instantStealChance <= 0 }">
-          +{{ (progression.bonuses.instantStealChance * 100) | number:0 }}%
-        </div>
-
-        <div class="ct-b-k"><span class="ct-ico">●</span>Éviter police</div>
-        <div class="ct-b-v" ng-class="{ zero: progression.bonuses.policeAvoidOnFail <= 0 }">
-          +{{ (progression.bonuses.policeAvoidOnFail * 100) | number:0 }}%
-        </div>
-      </div>
-
     </div>
   </div>
 

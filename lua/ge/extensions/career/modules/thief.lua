@@ -793,6 +793,23 @@ local function addXp(amount, reason)
   if gain <= 0 then return end
   state.progression.xp = state.progression.xp + gain
   recomputeProgression()
+  -- Sync avec la skill native de l'écran Career > Skills (style RLS).
+  pcall(function()
+    if career_modules_playerAttributes and type(career_modules_playerAttributes.addAttributes) == "function" then
+      career_modules_playerAttributes.addAttributes(
+        { ["careerSkills-blackmarket"] = gain },
+        { tags = { "gameplay", "careerThief", "skills" }, label = "BlackMarket XP" }
+      )
+      logFlow("SKILL", "addAttributes careerSkills-blackmarket +" .. tostring(gain))
+    end
+  end)
+  -- Fallback explicite: certaines versions acceptent mieux addAttribute().
+  pcall(function()
+    if career_modules_playerAttributes and type(career_modules_playerAttributes.addAttribute) == "function" then
+      career_modules_playerAttributes.addAttribute("careerSkills-blackmarket", gain)
+      logFlow("SKILL", "addAttribute careerSkills-blackmarket +" .. tostring(gain))
+    end
+  end)
   saveProgression()
   sendUI({
     type = "xpGain",
@@ -937,11 +954,26 @@ end
 
 local function pushMissionUI()
   if not state.mission then
+    local nearEligibleTarget = false
+    local nearbyName = ""
+    local target = raycastVehicleFromCamera()
+    if target and target.vehId then
+      local okEligible = false
+      okEligible = select(1, isVehicleEligible(target.vehId))
+      if okEligible then
+        nearEligibleTarget = true
+        local obj = be:getObjectByID(target.vehId)
+        nearbyName = getVehicleDisplayName(obj)
+      end
+    end
+
     sendUI({
       type = "idle",
       wanted = state.wanted,
       wantedTime = state.wantedTimer,
-      cooldown = state.cooldown
+      cooldown = state.cooldown,
+      hasTarget = nearEligibleTarget,
+      targetVehicleName = nearbyName
     })
     return
   end

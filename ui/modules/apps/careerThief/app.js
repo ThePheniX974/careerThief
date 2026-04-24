@@ -151,7 +151,7 @@ angular.module('beamng.apps')
         break;
 
       case 'idle':
-        $scope.statusLabel = 'Cherche une voiture cible';
+        $scope.statusLabel = d.hasTarget ? 'Cherche une voiture cible' : 'Aucune cible proche';
         $scope.cooldown = d.cooldown || 0;
         $scope.hasMission = false;
         if (d.wanted) {

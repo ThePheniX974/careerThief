@@ -1,0 +1,66 @@
+{
+  "name": "BlackMarket",
+  "description": "Progress the 1-10 BlackMarket mastery track by stealing, delivering, and selling vehicles.",
+  "order": 9950,
+  "isSkill": true,
+  "attributeKey": "careerSkills-blackmarket",
+  "hideUntilProgress": false,
+  "icon": "keys1",
+  "levels": [
+    {
+      "requiredValue": 0,
+      "description": {
+        "type": "unlockCard",
+        "icon": "info",
+        "heading": "Level 1",
+        "description": "Reach level 1 in BlackMarket."
+      },
+      "unlocks": []
+    },
+    {
+      "requiredValue": 130,
+      "description": { "type": "unlockCard", "icon": "info", "heading": "Level 2", "description": "Reach level 2 in BlackMarket." },
+      "unlocks": []
+    },
+    {
+      "requiredValue": 260,
+      "description": { "type": "unlockCard", "icon": "info", "heading": "Level 3", "description": "Reach level 3 in BlackMarket." },
+      "unlocks": []
+    },
+    {
+      "requiredValue": 520,
+      "description": { "type": "unlockCard", "icon": "info", "heading": "Level 4", "description": "Reach level 4 in BlackMarket." },
+      "unlocks": []
+    },
+    {
+      "requiredValue": 1040,
+      "description": { "type": "unlockCard", "icon": "info", "heading": "Level 5", "description": "Reach level 5 in BlackMarket." },
+      "unlocks": []
+    },
+    {
+      "requiredValue": 2080,
+      "description": { "type": "unlockCard", "icon": "info", "heading": "Level 6", "description": "Reach level 6 in BlackMarket." },
+      "unlocks": []
+    },
+    {
+      "requiredValue": 4160,
+      "description": { "type": "unlockCard", "icon": "info", "heading": "Level 7", "description": "Reach level 7 in BlackMarket." },
+      "unlocks": []
+    },
+    {
+      "requiredValue": 8320,
+      "description": { "type": "unlockCard", "icon": "info", "heading": "Level 8", "description": "Reach level 8 in BlackMarket." },
+      "unlocks": []
+    },
+    {
+      "requiredValue": 16640,
+      "description": { "type": "unlockCard", "icon": "info", "heading": "Level 9", "description": "Reach level 9 in BlackMarket." },
+      "unlocks": []
+    },
+    {
+      "requiredValue": 33280,
+      "description": { "type": "unlockCard", "icon": "info", "heading": "Level 10", "description": "Reach level 10 in BlackMarket." },
+      "unlocks": []
+    }
+  ]
+}
